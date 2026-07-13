@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modelador y Simulador 3D de Puente Warren</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Three.js, OrbitControls and Exporters -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/OBJExporter.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Controls -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="close-sidebar-btn" id="btn-close-sidebar" aria-label="Cerrar menú">&times;</button>
+                <span class="badge">Proyecto Integrador</span>
+                <h1>Puente Warren 3D</h1>
+                <p class="subtitle">Herramienta interactiva de diseño y simulación estructural a escala</p>
+            </div>
+
+            <div class="sidebar-content">
+                <!-- Visual Modes -->
+                <section class="control-group">
+                    <h2>Modo de Visualización</h2>
+                    <div class="visual-modes">
+                        <button class="mode-btn active" id="btn-mode-scale" data-mode="scale">
+                            <span class="icon">📏</span> Escala 1:25
+                        </button>
+                        <button class="mode-btn" id="btn-mode-real" data-mode="real">
+                            <span class="icon">🌉</span> Prototipo 1:1
+                        </button>
+                        <button class="mode-btn" id="btn-mode-fea" data-mode="fea">
+                            <span class="icon">⚡</span> FEA (Esfuerzos)
+                        </button>
+                        <button class="mode-btn" id="btn-mode-node" data-mode="node">
+                            <span class="icon">🔗</span> Detalle de Nudo
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Geometry Parameters -->
+                <section class="control-group">
+                    <h2>Dimensiones del Prototipo (m)</h2>
+                    
+                    <div class="input-range">
+                        <label for="param-length">Longitud Total (L): <span id="val-length">20.00</span> m</label>
+                        <input type="range" id="param-length" min="10" max="40" step="0.5" value="20.00">
+                    </div>
+
+                    <div class="input-range">
+                        <label for="param-height">Altura Celosía (h): <span id="val-height">3.00</span> m</label>
+                        <input type="range" id="param-height" min="1" max="6" step="0.25" value="3.00">
+                    </div>
+
+                    <div class="input-range">
+                        <label for="param-width">Ancho Calzada (b): <span id="val-width">6.00</span> m</label>
+                        <input type="range" id="param-width" min="1.5" max="12" step="0.25" value="6.00">
+                    </div>
+                </section>
+
+                <!-- Scale and Panels -->
+                <section class="control-group">
+                    <h2>Parámetros del Modelo</h2>
+
+                    <div class="input-range">
+                        <label for="param-panels">Número de Paneles (n): <span id="val-panels">4</span></label>
+                        <input type="range" id="param-panels" min="2" max="10" step="1" value="4">
+                    </div>
+
+                    <div class="input-range">
+                        <label for="param-scale">Escala del Modelo (1:E): 1/<span id="val-scale">25</span></label>
+                        <input type="range" id="param-scale" min="10" max="50" step="1" value="25">
+                    </div>
+                </section>
+
+                <!-- Load Test -->
+                <section class="control-group" id="group-load">
+                    <h2>Carga de Prueba (Centro de Vano)</h2>
+                    <div class="input-range">
+                        <label for="param-load">Carga Estática (P): <span id="val-load">5.00</span> N</label>
+                        <input type="range" id="param-load" min="0" max="50" step="0.5" value="5.00">
+                    </div>
+                </section>
+                
+                <!-- Export Utilities -->
+                <section class="control-group">
+                    <h2>Exportación 3D</h2>
+                    <div class="export-actions">
+                        <button class="action-btn secondary" id="btn-export-obj">Descargar .OBJ</button>
+                        <button class="action-btn secondary" id="btn-export-stl">Descargar .STL</button>
+                    </div>
+                </section>
+            </div>
+            
+            <div class="sidebar-footer">
+                <p>Desarrollado para el Proyecto Integrador</p>
+            </div>
+        </aside>
+
+        <!-- Main View Area -->
+        <main class="main-view">
+            <!-- 3D Canvas Container -->
+            <div class="canvas-container" id="canvas-container">
+                <div class="view-overlay" id="view-overlay">
+                    <div class="overlay-left">
+                        <div class="stats-card">
+                            <span class="stats-label" id="label-dim-x">L (Modelo):</span>
+                            <span class="stats-val" id="model-dim-x">60.00 cm</span>
+                        </div>
+                        <div class="stats-card">
+                            <span class="stats-label" id="label-dim-y">h (Modelo):</span>
+                            <span class="stats-val" id="model-dim-y">12.00 cm</span>
+                        </div>
+                        <div class="stats-card">
+                            <span class="stats-label" id="label-dim-z">b (Modelo):</span>
+                            <span class="stats-val" id="model-dim-z">16.00 cm</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Color legend for FEA mode (initially hidden) -->
+                    <div class="fea-legend" id="fea-legend" style="display: none;">
+                        <span class="legend-title">Distribución de Esfuerzos</span>
+                        <div class="legend-bar"></div>
+                        <div class="legend-labels">
+                            <span>Tracción (Tensión)</span>
+                            <span>Sin Esfuerzo</span>
+                            <span>Compresión</span>
+                        </div>
+                    </div>
+
+                    <div class="overlay-right">
+                        <div class="model-info">
+                            <div class="info-row">
+                                <span class="dot green"></span>
+                                <span id="visual-mode-title">Visualización: Escala 1:25 (Tallarines)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <button class="fullscreen-btn" id="btn-fullscreen">
+                    <span class="icon">⛶</span> Pantalla Completa
+                </button>
+                <button class="sidebar-toggle-btn" id="btn-toggle-sidebar" aria-label="Abrir Ajustes">
+                    <span class="icon">⚙️</span> Ajustes
+                </button>
+                <!-- Interactive 3D Canvas loaded here -->
+            </div>
+
+            <div class="dashboard-panel" id="dashboard-panel">
+                <nav class="dashboard-tabs">
+                    <button class="tab-btn active" data-tab="tab-geometry">📐 Geometría y Escala</button>
+                    <button class="tab-btn" data-tab="tab-materials">🍝 Cubicaciones y Peso</button>
+                    <button class="tab-btn" data-tab="tab-static">⚡ Análisis Estático</button>
+                    <button class="dashboard-toggle-btn" id="btn-toggle-dashboard" title="Colapsar panel">▼</button>
+                </nav>
+
+                <div class="dashboard-content">
+                    <!-- Tab 1: Geometry -->
+                    <div class="tab-pane active" id="tab-geometry">
+                        <div class="grid-2">
+                            <div class="calc-section">
+                                <h3>Conversión de Dimensiones</h3>
+                                <table class="calc-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Parámetro</th>
+                                            <th>Real (Prototipo)</th>
+                                            <th>Modelo (Escala)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>Longitud Total (L)</td>
+                                            <td><span class="math">L = <span id="geo-real-L">15.00</span> m</span></td>
+                                            <td><span class="math highlighted"><span id="geo-model-L">60.00</span> cm</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Altura de Celosía (h)</td>
+                                            <td><span class="math">h = <span id="geo-real-h">3.00</span> m</span></td>
+                                            <td><span class="math highlighted"><span id="geo-model-h">12.00</span> cm</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Ancho de Calzada (b)</td>
+                                            <td><span class="math">b = <span id="geo-real-b">4.00</span> m</span></td>
+                                            <td><span class="math highlighted"><span id="geo-model-b">16.00</span> cm</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Longitud de Panel (Lp)</td>
+                                            <td><span class="math">Lp = L/n = <span id="geo-real-Lp">3.75</span> m</span></td>
+                                            <td><span class="math highlighted"><span id="geo-model-Lp">15.00</span> cm</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="calc-section">
+                                <h3>Cálculo del Elemento Diagonal</h3>
+                                <p>Aplicando el <strong>Teorema de Pitágoras</strong> en el triángulo rectángulo formado por la base del panel ($Lp$) y la altura de la celosía ($h$):</p>
+                                <div class="math-box">
+                                    <p class="math-formula">d = \sqrt{Lp^2 + h^2}</p>
+                                    <p class="math-substitution" id="geo-math-pitagoras">d = \sqrt{15^2 + 12^2} = \sqrt{225 + 144} = \sqrt{369}</p>
+                                    <p class="math-result">d = <span id="geo-model-d">19.21</span> cm <span class="note">(Real: <span id="geo-real-d">4.80</span> m)</span></p>
+                                </div>
+
+                                <h3>Ángulo de Inclinación ($\theta$)</h3>
+                                <p>Ángulo de las diagonales respecto a la horizontal:</p>
+                                <div class="math-box">
+                                    <p class="math-formula">\theta = \arctan\left(\frac{h}{Lp}\right)</p>
+                                    <p class="math-substitution" id="geo-math-trig">\theta = \arctan(12 / 15)</p>
+                                    <p class="math-result">\theta = <span id="geo-theta">38.66</span>°</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 2: Materials -->
+                    <div class="tab-pane" id="tab-materials">
+                        <div class="grid-2">
+                            <div class="calc-section">
+                                <h3>Inventario de Elementos por Celosía Lateral</h3>
+                                <table class="calc-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Elemento Estructural</th>
+                                            <th>Fórmula/Cantidad</th>
+                                            <th>Long. Unitaria</th>
+                                            <th>Long. Parcial</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>Cuerda Superior</td>
+                                            <td>n = <span id="mat-qty-sup">4</span></td>
+                                            <td><span id="mat-len-sup">15.00</span> cm</td>
+                                            <td><span id="mat-total-sup">60.00</span> cm</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Cuerda Inferior</td>
+                                            <td>n = <span id="mat-qty-inf">4</span></td>
+                                            <td><span id="mat-len-inf">15.00</span> cm</td>
+                                            <td><span id="mat-total-inf">60.00</span> cm</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Diagonales</td>
+                                            <td>2n = <span id="mat-qty-diag">8</span></td>
+                                            <td><span id="mat-len-diag">19.21</span> cm</td>
+                                            <td><span id="mat-total-diag">153.68</span> cm</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Verticales</td>
+                                            <td>n + 1 = <span id="mat-qty-vert">5</span></td>
+                                            <td><span id="mat-len-vert">12.00</span> cm</td>
+                                            <td><span id="mat-total-vert">60.00</span> cm</td>
+                                        </tr>
+                                        <tr class="subtotal-row">
+                                            <td colspan="3">Subtotal por Celosía</td>
+                                            <td><span id="mat-subtotal-side">333.68</span> cm</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div class="calc-section">
+                                <h3>Cubicación Completa y Peso Estimado</h3>
+                                <table class="calc-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Zona del Modelo</th>
+                                            <th>Fórmula/Cantidad</th>
+                                            <th>Long. Unitaria</th>
+                                            <th>Long. Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>Celosía Izquierda</td>
+                                            <td>1</td>
+                                            <td>—</td>
+                                            <td><span id="mat-total-left">333.68</span> cm</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Celosía Derecha</td>
+                                            <td>1</td>
+                                            <td>—</td>
+                                            <td><span id="mat-total-right">333.68</span> cm</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Travesaños Superiores</td>
+                                            <td>n + 1 = <span id="mat-qty-trav-sup">5</span></td>
+                                            <td><span id="mat-len-trav-sup">16.00</span> cm</td>
+                                            <td><span id="mat-total-trav-sup">80.00</span> cm</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Travesaños Tablero</td>
+                                            <td>n + 1 = <span id="mat-qty-trav-inf">5</span></td>
+                                            <td><span id="mat-len-trav-inf">16.00</span> cm</td>
+                                            <td><span id="mat-total-trav-inf">80.00</span> cm</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Arriostramientos (X)</td>
+                                            <td>2n = <span id="mat-qty-arr">8</span></td>
+                                            <td><span id="mat-len-arr">21.93</span> cm</td>
+                                            <td><span id="mat-total-arr">175.45</span> cm</td>
+                                        </tr>
+                                        <tr class="total-row">
+                                            <td colspan="3">Total General de Fideo</td>
+                                            <td><span id="mat-grand-total">902.81</span> cm (~<span id="mat-grand-total-m">9.03</span> m)</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                
+                                <div class="material-notes">
+                                    <p><strong>Estimación de Peso y Masa:</strong></p>
+                                    <ul>
+                                        <li>Una barra de tallarín Don Vittorio (pasta seca) tiene una masa lineal promedio de ~0.08 g/cm.</li>
+                                        <li>Masa estimada en fideo: <strong><span id="mat-est-mass">72.2</span> g</strong>.</li>
+                                        <li>Masa estimada con pegamento UHU e hilo: <strong><span id="mat-total-mass">85.0</span> g</strong>.</li>
+                                        <li>Peso del modelo en reposo ($W = m \cdot g$): <strong><span id="mat-est-weight">0.83</span> N</strong>.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: Static Analysis -->
+                    <div class="tab-pane" id="tab-static">
+                        <div class="grid-2">
+                            <div class="calc-section">
+                                <h3>Diagrama de Cuerpo Libre (DCL) y Equilibrio</h3>
+                                <p>Bajo una carga puntual $P$ en el centro del vano del puente:</p>
+                                <div class="math-box">
+                                    <p><strong>Carga Aplicada:</strong> $P = <span id="static-load-val">5.00</span>\text{ N}$</p>
+                                    <p><strong>Peso Propio:</strong> $W_{propio} \approx <span id="static-weight-val">0.83</span>\text{ N}$ (distribuido, concentrado en el centro en el DCL)</p>
+                                    <p><strong>Reacciones de Apoyo:</strong> Por simetría en apoyos simples A y B:</p>
+                                    <p class="math-formula">R_A = R_B = \frac{P + W_{propio}}{2}</p>
+                                    <p class="math-result">R_A = R_B = <span id="static-reaction-val">2.92</span> N <span class="note">(Verticales hacia arriba)</span></p>
+                                </div>
+                                <div class="alert info">
+                                    <p><strong>Nota Estructural:</strong> Los esfuerzos axiales son calculados automáticamente usando el método de rigidez directa de barra de armadura en 2D. Las barras rojas representan compresión y las azules tracción.</p>
+                                </div>
+                            </div>
+
+                            <div class="calc-section">
+                                <h3>Esfuerzos en Barras Críticas</h3>
+                                <table class="calc-table" id="table-stresses">
+                                    <thead>
+                                        <tr>
+                                            <th>Barra</th>
+                                            <th>Tipo</th>
+                                            <th>Fuerza Axial</th>
+                                            <th>Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Solved stresses will be injected here by JS -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    <script src="bridge.js"></script>
+</body>
+</html>
