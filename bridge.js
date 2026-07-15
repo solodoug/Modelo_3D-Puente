@@ -141,7 +141,7 @@ let params = {
     panels: 4,
     scale: 25,
     load: 5.00,
-    mode: 'scale',
+    mode: 'real',
     scenario: 'napo'
 };
 
@@ -987,24 +987,24 @@ function buildEnvironment(isAmazon, xOff, zOff) {
     const concrete = new THREE.MeshStandardMaterial({ color: 0x7b8fa1, roughness: 0.85 });
     const asphalt  = new THREE.MeshStandardMaterial({ color: 0x1e2535, roughness: 0.9 });
 
-    // Abutments (Estribos principales)
+    // Abutments (Estribos principales de hormigón visible que soportan el puente)
     const pierGeom = new THREE.BoxGeometry(1.6, 4.2, params.width + 1.2);
     [-1, 1].forEach(side => {
         const pier = new THREE.Mesh(pierGeom, concrete);
-        // Colocar el estribo ligeramente por debajo del césped (-0.02) para que no sobresalga lateralmente
-        pier.position.set(side * (xOff + 0.7), -2.12, 0);
+        // Posicionado a xOff + 0.4 para que sobresalga en el cauce como pilar de apoyo
+        // Altura y = -2.13 deja la cara superior en y = -0.03 para que quede tapado por la calzada
+        pier.position.set(side * (xOff + 0.4), -2.13, 0);
         pier.castShadow = pier.receiveShadow = true;
         bridgeGroup.add(pier);
     });
 
-    // Wing Walls (Muros de ala de concreto para contener el terraplén de la carretera)
+    // Wing Walls (Muros de ala / Aletas de hormigón para contención lateral)
+    // Enterrados a y = -2.05 (top = -0.15) para que queden bajo el césped y no se vea ninguna parte blanca arriba
     const wingWallGeom = new THREE.BoxGeometry(4.0, 3.8, 0.4);
     [-1, 1].forEach(side => {
         [-1, 1].forEach(zSide => {
             const wall = new THREE.Mesh(wingWallGeom, concrete);
-            // Rotar ligeramente hacia afuera (diseño civil típico)
-            wall.rotation.y = side * zSide * 0.26; // ~15 grados
-            // Colocar los muros de ala por debajo del nivel del césped (-0.15) para evitar Z-fighting en los laterales
+            wall.rotation.y = side * zSide * 0.26;
             wall.position.set(
                 side * (xOff + 2.2),
                 -2.05,  // Enterrado bajo el nivel del césped
@@ -1025,19 +1025,21 @@ function buildEnvironment(isAmazon, xOff, zOff) {
     const grad = wCtx.createLinearGradient(0, 0, 256, 0);
 
     if (isAmazon) {
-        grad.addColorStop(0,    '#0d3b52');
-        grad.addColorStop(0.3,  '#0e4f6b');
-        grad.addColorStop(0.7,  '#0a3a50');
-        grad.addColorStop(1,    '#0d3b52');
+        // Colores turquesa/celeste río tropical
+        grad.addColorStop(0,    '#1c6e8c');
+        grad.addColorStop(0.3,  '#278ab0');
+        grad.addColorStop(0.7,  '#1b617a');
+        grad.addColorStop(1,    '#1c6e8c');
     } else {
-        grad.addColorStop(0,    '#1a3a5c');
-        grad.addColorStop(0.5,  '#1e4d72');
-        grad.addColorStop(1,    '#1a3a5c');
+        // Celeste glaciar de montaña
+        grad.addColorStop(0,    '#2980b9');
+        grad.addColorStop(0.5,  '#5dade2');
+        grad.addColorStop(1,    '#2980b9');
     }
     wCtx.fillStyle = grad;
     wCtx.fillRect(0, 0, 256, 64);
     // Ripples
-    wCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+    wCtx.strokeStyle = 'rgba(255,255,255,0.12)';
     wCtx.lineWidth = 1;
     for (let i = 0; i < 8; i++) {
         wCtx.beginPath();
@@ -1050,12 +1052,15 @@ function buildEnvironment(isAmazon, xOff, zOff) {
     wTex.wrapS = THREE.RepeatWrapping;
     wTex.repeat.set(4, 1);
 
+    // Agua premium transparente y brillante
     const waterMat = new THREE.MeshStandardMaterial({
-        map: wTex,
-        metalness: 0.05,
-        roughness: 0.3,
+        color: isAmazon ? 0x228baf : 0x5dade2,
+        bumpMap: wTex,
+        bumpScale: 0.05,
+        metalness: 0.85,
+        roughness: 0.12,
         transparent: true,
-        opacity: 0.88
+        opacity: 0.76  // Más transparente y cristalina
     });
 
     waterMesh = new THREE.Mesh(waterGeom, waterMat);
@@ -1064,17 +1069,35 @@ function buildEnvironment(isAmazon, xOff, zOff) {
     bridgeGroup.add(waterMesh);
 
     // ── Terrain / Banks ────────────────────────────────────────
-    const bankColor = isAmazon ? 0x1a3a2a : 0x2c3a1e;
+    const bankColor = isAmazon ? 0x163321 : 0x27351a; // Colores de vegetación natural
     const bankMat = new THREE.MeshStandardMaterial({ color: bankColor, roughness: 0.95 });
     const bankGeom = new THREE.BoxGeometry(45, 8.2, 90);
 
     [-1, 1].forEach(side => {
         const bank = new THREE.Mesh(bankGeom, bankMat);
-        // Desfase vertical de -0.01 para evitar Z-fighting con la calzada
+        // Orilla recta restaurada
         bank.position.set(side * (xOff + 22.5), -4.11, 0);
         bank.receiveShadow = true;
         bridgeGroup.add(bank);
     });
+
+    // Pilares intermedios en el río (bajo cada nodo inferior interno de la celosía)
+    const intPierGeom = new THREE.BoxGeometry(0.6, 4.06, params.width - 0.5);
+    const Lp = params.length / params.panels;
+    for (let i = 1; i < params.panels; i++) {
+        const xVal = -xOff + i * Lp;
+        const intPier = new THREE.Mesh(intPierGeom, concrete);
+        intPier.position.set(xVal, -2.08, 0);
+        intPier.castShadow = true;
+        intPier.receiveShadow = true;
+        bridgeGroup.add(intPier);
+    }
+
+    // ── Background Mountains ───────────────────────────────────
+    buildMountains(isAmazon, xOff);
+
+    // ── River Rocks ────────────────────────────────────────────
+    buildRiverRocks(xOff);
 
     // ── Roads ─────────────────────────────────────────────────
     const roadLen = 35;
@@ -1292,9 +1315,9 @@ function animate(timestamp = 0) {
     }
 
     // ── 2. Animated river ─────────────────────────────────────────
-    if (waterMesh && waterMesh.material.map) {
-        waterMesh.material.map.offset.x += dt * 0.15;
-        waterMesh.material.map.needsUpdate = true;
+    if (waterMesh && waterMesh.material.bumpMap) {
+        waterMesh.material.bumpMap.offset.x += dt * 0.12;
+        waterMesh.material.bumpMap.needsUpdate = true;
     }
 
     // ── 3. Bridge construction animation ─────────────────────────
@@ -1579,3 +1602,101 @@ function download(content, name, type) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
+
+// ── MOUNTAINS BUILDER ─────────────────────────────────────────
+function buildMountains(isAmazon, xOff) {
+    const mtColor = isAmazon ? 0x0a1c12 : 0x2e2520;
+    const mtMat = new THREE.MeshStandardMaterial({
+        color: mtColor,
+        roughness: 0.95,
+        metalness: 0.05
+    });
+
+    const snowMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.85,
+        metalness: 0.02
+    });
+
+    // Mountains positions (far in Z background and foreground)
+    const zRanges = [-52, 52];
+    zRanges.forEach(zVal => {
+        // Create 3 mountains per side (total 6 per range)
+        const mtConfigs = [
+            { x: -xOff - 28, r: 18, h: 22, rot: 0.2 },
+            { x: -xOff - 14, r: 14, h: 15, rot: 1.1 },
+            { x:  xOff + 14, r: 15, h: 16, rot: 2.3 },
+            { x:  xOff + 28, r: 20, h: 24, rot: 0.8 }
+        ];
+
+        mtConfigs.forEach(cfg => {
+            // Low poly stylized mountains but with enough segments to look organic
+            const geom = new THREE.ConeGeometry(cfg.r, cfg.h, 5);
+            const mt = new THREE.Mesh(geom, mtMat);
+            
+            // Randomize position slightly
+            const finalX = cfg.x + (Math.random() - 0.5) * 4;
+            const finalZ = zVal + (Math.random() - 0.5) * 6;
+            mt.position.set(finalX, -4.1 + cfg.h/2, finalZ);
+            mt.rotation.y = cfg.rot + Math.random() * 0.5;
+            mt.castShadow = true;
+            mt.receiveShadow = true;
+
+            // Add snow peak for Andean mountains (Sierra)
+            if (!isAmazon) {
+                const snowGeom = new THREE.ConeGeometry(cfg.r * 0.38, cfg.h * 0.38, 5);
+                const snow = new THREE.Mesh(snowGeom, snowMat);
+                // Position on top of the mountain cone
+                snow.position.set(0, cfg.h * 0.32, 0);
+                snow.rotation.y = mt.rotation.y;
+                mt.add(snow);
+            }
+
+            bridgeGroup.add(mt);
+        });
+    });
+}
+
+// ── RIVER ROCKS BUILDER ───────────────────────────────────────
+function buildRiverRocks(xOff) {
+    const rockColors = [0x5a5a5a, 0x6e6e6e, 0x4a4a4a, 0x7c6f62, 0x5c534c];
+    
+    // Generar 16 rocas distribuidas de forma natural en las orillas del río
+    for (let i = 0; i < 16; i++) {
+        const r = 0.4 + Math.random() * 0.8; // tamaño de la roca (40cm a 1.2m)
+        
+        // Esfera de baja resolución (5 segmentos, 4 anillos) para que parezca una piedra angulosa y áspera
+        const geom = new THREE.SphereGeometry(r, 5, 4);
+        
+        const col = rockColors[Math.floor(Math.random() * rockColors.length)];
+        const mat = new THREE.MeshStandardMaterial({
+            color: col,
+            roughness: 0.9,
+            metalness: 0.05
+        });
+        const rock = new THREE.Mesh(geom, mat);
+        
+        // Colocar cerca de las orillas (X = -xOff + delta o X = xOff - delta)
+        const isLeftShore = Math.random() > 0.5;
+        let rx = 0;
+        if (isLeftShore) {
+            rx = -xOff + Math.random() * 5.0; // orilla izquierda
+        } else {
+            rx = xOff - Math.random() * 5.0;  // orilla derecha
+        }
+        
+        const rz = (Math.random() - 0.5) * 80;
+        const ry = -4.15 + (r * 0.28); // parcialmente sumergidas
+        
+        rock.position.set(rx, ry, rz);
+        // Rotación y escala aleatoria para hacer cada piedra única
+        rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+        rock.scale.set(1.4 + Math.random()*0.4, 0.7 + Math.random()*0.3, 1.1 + Math.random()*0.4);
+        
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+        bridgeGroup.add(rock);
+    }
+}
+
+
