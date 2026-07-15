@@ -161,7 +161,7 @@ function initThree() {
     scene.background = new THREE.Color(0x080c14);
     scene.fog = new THREE.FogExp2(0x0d2137, 0.022);
 
-    camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.01, 1000);
     camera.position.set(14, 8, 20);
 
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -840,7 +840,7 @@ function buildBridge3D(nodes2D, elements2D) {
         const len = dir.length();
         if (len < 0.001) return;
 
-        const geom = new THREE.CylinderGeometry(radius, radius, len, 8);
+        const geom = new THREE.CylinderGeometry(radius, radius, len, 24);
 
         let m = mat;
         if (colorHex && isFEA) {
@@ -904,7 +904,7 @@ function buildBridge3D(nodes2D, elements2D) {
 
         // Nodes (spheres)
         n3D.forEach((pos, ni) => {
-            const geom = new THREE.SphereGeometry(nodeR, 14, 14);
+            const geom = new THREE.SphereGeometry(nodeR, 32, 32);
             const mesh = new THREE.Mesh(geom, nodeMat);
             mesh.position.copy(pos);
             mesh.castShadow = true;
@@ -987,13 +987,32 @@ function buildEnvironment(isAmazon, xOff, zOff) {
     const concrete = new THREE.MeshStandardMaterial({ color: 0x7b8fa1, roughness: 0.85 });
     const asphalt  = new THREE.MeshStandardMaterial({ color: 0x1e2535, roughness: 0.9 });
 
-    // Abutments
+    // Abutments (Estribos principales)
     const pierGeom = new THREE.BoxGeometry(1.6, 4.2, params.width + 1.2);
     [-1, 1].forEach(side => {
         const pier = new THREE.Mesh(pierGeom, concrete);
-        pier.position.set(side * (xOff + 0.7), -2.1, 0);
+        // Colocar el estribo ligeramente por debajo del césped (-0.02) para que no sobresalga lateralmente
+        pier.position.set(side * (xOff + 0.7), -2.12, 0);
         pier.castShadow = pier.receiveShadow = true;
         bridgeGroup.add(pier);
+    });
+
+    // Wing Walls (Muros de ala de concreto para contener el terraplén de la carretera)
+    const wingWallGeom = new THREE.BoxGeometry(4.0, 3.8, 0.4);
+    [-1, 1].forEach(side => {
+        [-1, 1].forEach(zSide => {
+            const wall = new THREE.Mesh(wingWallGeom, concrete);
+            // Rotar ligeramente hacia afuera (diseño civil típico)
+            wall.rotation.y = side * zSide * 0.26; // ~15 grados
+            // Colocar los muros de ala por debajo del nivel del césped (-0.15) para evitar Z-fighting en los laterales
+            wall.position.set(
+                side * (xOff + 2.2),
+                -2.05,  // Enterrado bajo el nivel del césped
+                zSide * (params.width / 2 + 0.35)
+            );
+            wall.castShadow = wall.receiveShadow = true;
+            bridgeGroup.add(wall);
+        });
     });
 
     // ── Water / River ──────────────────────────────────────────
@@ -1047,11 +1066,12 @@ function buildEnvironment(isAmazon, xOff, zOff) {
     // ── Terrain / Banks ────────────────────────────────────────
     const bankColor = isAmazon ? 0x1a3a2a : 0x2c3a1e;
     const bankMat = new THREE.MeshStandardMaterial({ color: bankColor, roughness: 0.95 });
-    const bankGeom = new THREE.BoxGeometry(45, 6, 90);
+    const bankGeom = new THREE.BoxGeometry(45, 8.2, 90);
 
     [-1, 1].forEach(side => {
         const bank = new THREE.Mesh(bankGeom, bankMat);
-        bank.position.set(side * (xOff + 22.5), -6, 0);
+        // Desfase vertical de -0.01 para evitar Z-fighting con la calzada
+        bank.position.set(side * (xOff + 22.5), -4.11, 0);
         bank.receiveShadow = true;
         bridgeGroup.add(bank);
     });
@@ -1067,12 +1087,18 @@ function buildEnvironment(isAmazon, xOff, zOff) {
     });
 
     // Road markings
-    const markMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    // Empleo de polygonOffset para forzar la renderización de marcas sobre el asfalto sin parpadeos
+    const markMat = new THREE.MeshBasicMaterial({
+        color: 0xfacc15,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -2.0
+    });
     const totalLen = params.length + roadLen * 2;
     for (let i = 0; i < Math.floor(totalLen / 3); i++) {
         const dashG = new THREE.BoxGeometry(0.9, 0.005, 0.1);
         const dash = new THREE.Mesh(dashG, markMat);
-        dash.position.set(-totalLen/2 + i * 3 + 0.45, 0.008, 0);
+        dash.position.set(-totalLen/2 + i * 3 + 0.45, 0.01, 0);
         bridgeGroup.add(dash);
     }
 
@@ -1083,8 +1109,8 @@ function buildEnvironment(isAmazon, xOff, zOff) {
         buildAndeanVegetation(xOff);
     }
 
-    // ── Vehicles / Pedestrians ────────────────────────────────
-    buildTraffic(xOff, zOff, false);
+    // ── Vehicles / Traffic ────────────────────────────────────
+    buildTraffic(xOff, zOff);
 }
 
 // ── VEGETATION ────────────────────────────────────────────────
@@ -1228,37 +1254,6 @@ function buildTraffic(xOff, zOff) {
         return { group: g, wheels, legs: [] };
     }
 
-    // ── Pedestrian builder ────────────────────────────────────────
-    function mkPed(shirtCol) {
-        const g  = new THREE.Group();
-        const bm = new THREE.MeshStandardMaterial({ color: shirtCol, roughness: 0.8 });
-        const jm = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.8 });
-        const hm = new THREE.MeshStandardMaterial({ color: 0xffdbac, roughness: 0.7 });
-        const sm = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.9 });
-
-        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.32,0.14), bm); torso.position.y = 0.72; g.add(torso);
-        const head  = new THREE.Mesh(new THREE.SphereGeometry(0.1,8,8),       hm); head.position.y  = 1.0;  g.add(head);
-        // Arms (static)
-        [-1,1].forEach(s => {
-            const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08,0.28,0.08), bm);
-            arm.position.set(s*0.17, 0.7, 0); arm.rotation.z = s*0.18; g.add(arm);
-        });
-
-        // Leg pivots (animated)
-        const legs = [];
-        const legLen = 0.34;
-        [-1,1].forEach(s => {
-            const pivot = new THREE.Group(); pivot.position.set(s*0.07, 0.58, 0);
-            const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.09,legLen,0.1), jm);
-            thigh.position.y = -legLen/2; pivot.add(thigh);
-            const shoe  = new THREE.Mesh(new THREE.BoxGeometry(0.1,0.07,0.18), sm);
-            shoe.position.set(0, -legLen-0.035, 0.04); pivot.add(shoe);
-            g.add(pivot); legs.push(pivot);
-        });
-        g.traverse(c => { if (c.isMesh) c.castShadow = true; });
-        return { group: g, wheels: [], legs };
-    }
-
     // ── Register and spawn actor ──────────────────────────────────
     function spawnActor(meshResult, type, speed, zLane, dir, startT) {
         const { group, wheels, legs } = meshResult;
@@ -1272,19 +1267,12 @@ function buildTraffic(xOff, zOff) {
 
     const laneR   =  params.width / 4;
     const laneL   = -params.width / 4;
-    const sidePed =  zOff - 0.38;
 
     // Vehicles
     spawnActor(mkCar(0xef4444),   'car',   13, laneR,  +1, 0.05);
     spawnActor(mkCar(0x3b82f6),   'car',    9, laneR,  +1, 0.55);
     spawnActor(mkCar(0x10d48a),   'car',   11, laneL,  -1, 0.30);
     spawnActor(mkTruck(0xf97316), 'truck',  7, laneL,  -1, 0.75);
-
-    // Pedestrians
-    spawnActor(mkPed(0xec4899), 'ped', 1.35,  sidePed, +1, 0.15);
-    spawnActor(mkPed(0x8b5cf6), 'ped', 1.20,  sidePed, +1, 0.68);
-    spawnActor(mkPed(0x06b6d4), 'ped', 1.40, -sidePed, -1, 0.42);
-    spawnActor(mkPed(0xeab308), 'ped', 1.10, -sidePed, -1, 0.87);
 }
 
 // ── MAIN ANIMATION LOOP ───────────────────────────────────────
@@ -1349,15 +1337,6 @@ function animate(timestamp = 0) {
         const dRot = (dt * actor.speed) / wheelRadius;
         actor.wheels.forEach(w => { w.rotation.z -= dRot; });
 
-        // Pedestrian leg swing (walking cycle)
-        if (actor.type === 'ped' && actor.legs.length >= 2) {
-            const freq = actor.speed * 2.5;  // ~2.5 steps/m
-            const phase = actor.t * actor.TOTAL_PATH * freq * Math.PI * 2;
-            actor.legs[0].rotation.x =  Math.sin(phase) * 0.45;
-            actor.legs[1].rotation.x = -Math.sin(phase) * 0.45;
-            // Slight body bob
-            actor.group.position.y = Math.abs(Math.sin(phase)) * 0.03;
-        }
     });
 
     // ── 5. Dynamic FEA — throttled repaint as truck crosses ───────
@@ -1551,7 +1530,7 @@ function buildNodeDetail() {
 
     for (let i = 0; i < 14; i++) {
         const tor = new THREE.Mesh(
-            new THREE.TorusGeometry(0.33 + Math.random()*0.06, 0.03, 8, 22),
+            new THREE.TorusGeometry(0.33 + Math.random()*0.06, 0.03, 16, 40),
             thMat
         );
         tor.position.set((Math.random()-0.5)*0.3,(Math.random()-0.5)*0.3,(Math.random()-0.5)*0.3);
@@ -1560,9 +1539,9 @@ function buildNodeDetail() {
         nodeDetailGroup.add(tor);
     }
 
-    nodeDetailGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.48,14,14), glMat));
+    nodeDetailGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.48,32,32), glMat));
     for (let i = 0; i < 4; i++) {
-        const drop = new THREE.Mesh(new THREE.SphereGeometry(0.11,8,8), glMat);
+        const drop = new THREE.Mesh(new THREE.SphereGeometry(0.11,24,24), glMat);
         drop.position.set((Math.random()-0.5)*0.8,(Math.random()-0.5)*0.8,(Math.random()-0.5)*0.4);
         nodeDetailGroup.add(drop);
     }
