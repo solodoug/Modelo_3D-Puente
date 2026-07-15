@@ -1,467 +1,628 @@
-// Visor y Simulador 3D de Puente Warren - UNACH Ing. Civil
-// Lógica de cálculo y renderizado 3D
+// ============================================================
+// Simulador Educativo 3D — Puente Warren — Ecuador
+// Render cinematográfico + Análisis FEA + Contexto Real
+// ============================================================
 
-// --- CONSTANTES Y CONFIGURACIÓN ---
+'use strict';
+
+// ── THREE.JS GLOBALS ─────────────────────────────────────────
 let scene, camera, renderer, controls;
 let bridgeGroup = null;
 let nodeDetailGroup = null;
+let waterMesh = null;         // río animado
+let spotLight = null;         // luz orbital
+let spotLightAngle = 0;
 
-// Parámetros actuales (valores por defecto)
-let params = {
-    length: 20.00,  // Longitud prototipo (m)
-    height: 3.00,   // Altura prototipo (m)
-    width: 6.00,    // Ancho prototipo (m)
-    panels: 4,      // Número de paneles
-    scale: 25,      // Escala 1:25
-    load: 5.00,     // Carga de prueba (N)
-    mode: 'scale'   // Modo de visualización: scale, real, fea, node
+// ── BUILD ANIMATION STATE ─────────────────────────────────────
+let buildAnimItems = [];      // { mesh, targetScaleY, delay, done }
+let buildAnimClock = 0;
+let buildAnimActive = false;
+
+// ── TRAFFIC ACTOR SYSTEM ──────────────────────────────────────
+let trafficActors = [];        // moving vehicles + pedestrians
+const ROAD_LEN = 35;           // carretera a cada lado del puente
+
+// ── DYNAMIC FEA STATE ────────────────────────────────────────
+let barMeshRefs  = [];         // [{mesh, elemIdx}] para repintar FEA sin rebuild
+let dynamicFEATimer = 0;       // throttle acumulador
+const DYNAMIC_FEA_INTERVAL = 0.12; // segundos entre recálculos FEA
+
+// ── CINEMATIC TOUR STATE ──────────────────────────────────────
+let cinematic = {
+    active: false,
+    t: 0,
+    duration: 30,     // seconds for full 360 + elevation sweep
+    radius: 25,
+    savedPos: null,
+    savedTarget: null
 };
 
-// --- INICIALIZACIÓN ---
+// ── ECUADOR SCENARIOS ─────────────────────────────────────────
+const ECUADOR_SCENARIOS = {
+    napo: {
+        id: 'napo',
+        icon: '🌿',
+        name: 'Comunidad Kichwa — Río Napo',
+        subtitle: 'Provincia de Napo · Amazonia ecuatoriana',
+        type: 'Peatonal / Bicicletas',
+        flow: '~120 m³/s (época seca)',
+        span: '18 – 22 m',
+        budget: '$45,000 – $70,000 USD',
+        beneficiaries: '~850 personas',
+        params: { length: 20, height: 3.5, width: 2.0, panels: 4, scale: 25, load: 5 },
+        environment: 'amazon',
+        badgeText: 'Río Napo · Amazonia',
+        fact: 'En la Amazonia ecuatoriana, la provincia de Napo tiene más de 60 comunidades indígenas Kichwa con acceso limitado durante la creciente del río (noviembre–febrero). Un puente Warren de 20 m puede reducir el tiempo de acceso a salud y mercados de 3 horas en canoa a 15 minutos.',
+        challenges: [
+            { icon: '🌧️', title: 'Precipitación extrema', text: 'La Amazonia recibe hasta 4,000 mm/año. El acero requiere pintura epóxica y galvanizado para resistir la corrosión.' },
+            { icon: '🌍', title: 'Zona sísmica alta (NEC Zona III)', text: 'Ecuador está en el Cinturón de Fuego. La NEC exige análisis dinámico para estructuras mayores a 12 m.' },
+            { icon: '🚧', title: 'Acceso logístico', text: 'El diseño Warren modular permite transportar elementos en lanchas o mulas y ensamblar sin grúa pesada.' }
+        ],
+        loadRef: 'AASHTO LRFD §3.14 — Carga peatonal: 4.8 kN/m²',
+        fogColor: 0x0d2137,
+        fogDensity: 0.022
+    },
+    pastaza: {
+        id: 'pastaza',
+        icon: '🌊',
+        name: 'Puente Peatonal — Río Pastaza',
+        subtitle: 'Provincia de Pastaza · Amazonia ecuatoriana',
+        type: 'Peatonal / Motocicletas',
+        flow: '~850 m³/s (creciente)',
+        span: '22 – 28 m',
+        budget: '$60,000 – $95,000 USD',
+        beneficiaries: '~1,200 personas',
+        params: { length: 25, height: 4.0, width: 2.5, panels: 5, scale: 25, load: 8 },
+        environment: 'amazon',
+        badgeText: 'Río Pastaza · Amazonia',
+        fact: 'El Río Pastaza es uno de los más caudalosos de Ecuador con ~850 m³/s promedio. Su cuenca alimenta al Río Marañón en Perú. La anchura del río en épocas de crecida puede llegar a 80 m, haciendo del Puente Warren de doble celosía la solución más económica para luces de 22–30 m.',
+        challenges: [
+            { icon: '💧', title: 'Caudal alto y crecidas repentinas', text: 'El nivel puede subir 4 m en 6 horas. El puente debe tener galibo libre mínimo de 3 m sobre el nivel máximo de crecida.' },
+            { icon: '🌿', title: 'Impacto ambiental', text: 'La NEC y el MAE exigen EIA (Estudio de Impacto Ambiental) para estructuras en ríos amazónicos. Apoyos sobre roca firme o pilotes en la orilla.' },
+            { icon: '⚡', title: 'Suministro energético', text: 'Sin energía eléctrica continua. El diseño debe prescindir de equipos de soldadura pesada in situ — uniones atornilladas (ASTM A325).' }
+        ],
+        loadRef: 'NEC-SE-CG §4.2 — Carga viva peatonal: 4.8 kN/m²',
+        fogColor: 0x0a1a2e,
+        fogDensity: 0.025
+    },
+    blanco: {
+        id: 'blanco',
+        icon: '🏗️',
+        name: 'Puente "La Independencia" — Río Blanco',
+        subtitle: 'Cantón Puerto Quito · Pichincha',
+        type: 'Vehicular (2 carriles)',
+        flow: '~45 m³/s',
+        span: '16 – 20 m',
+        budget: '$90,000 – $140,000 USD',
+        beneficiaries: '~5,000 vehículos/día',
+        params: { length: 18, height: 3.0, width: 6.0, panels: 4, scale: 25, load: 25 },
+        environment: 'andean',
+        badgeText: 'Río Blanco · Pichincha',
+        fact: 'El Puente La Independencia sobre el Río Blanco es un caso documentado por la Escuela Politécnica Nacional (EPN). Fue construido bajo norma HS 20-44, pero el tráfico actual de vehículos pesados sobrepasa su capacidad. La EPN propuso reforzamiento con cubierta de acero A572 Gr.50 para elevar la carga de diseño a HL-93 (AASHTO LRFD).',
+        challenges: [
+            { icon: '🚛', title: 'Sobrecarga vehicular', text: 'Los camiones de caña azucarera superan las 30 ton. La norma original HS 20-44 equivale a ~18 ton. Requiere verificación urgente de pandeo en cuerdas superiores.' },
+            { icon: '🔩', title: 'Corrosión en empalmes', text: 'El 60% de las conexiones remachadas del puente presentan corrosión activa. AISC 360 exige inspección visual y de ultrasonido cada 2 años.' },
+            { icon: '📐', title: 'Deflexión excesiva', text: 'La deflexión en carga viva supera L/400 (límite AASHTO). Requiere análisis dinámico (vibración por carga vehicular en movimiento).' }
+        ],
+        loadRef: 'AASHTO LRFD §3.6 — Camión de diseño HL-93: 325 kN',
+        fogColor: 0x121820,
+        fogDensity: 0.018
+    },
+    chimborazo: {
+        id: 'chimborazo',
+        icon: '⛰️',
+        name: 'Quebrada Andina — Chimborazo',
+        subtitle: 'Provincia de Chimborazo · Sierra',
+        type: 'Peatonal / Pecuario',
+        flow: '~8 m³/s',
+        span: '12 – 18 m',
+        budget: '$25,000 – $50,000 USD',
+        beneficiaries: '~400 personas',
+        params: { length: 15, height: 2.5, width: 1.5, panels: 3, scale: 25, load: 3 },
+        environment: 'andean',
+        badgeText: 'Quebrada Andina · Chimborazo',
+        fact: 'En Chimborazo, las comunidades indígenas Puruhá acceden a sus parcelas agrícolas cruzando quebradas de 8–15 m de profundidad. Un puente Warren de guadúa angustifolia Kunth, material nativo ecuatoriano, puede ser una alternativa de bajo costo ($15,000 USD) con resistencia comparable al acero en tensión pura.',
+        challenges: [
+            { icon: '❄️', title: 'Temperatura extrema', text: 'A 3,600 m.s.n.m., la variación térmica es de -5°C a 20°C. Los aceros deben ser de baja temperatura de transición frágil (Charpy ≥ 27 J a -20°C).' },
+            { icon: '🌋', title: 'Sismicidad alta', text: 'Chimborazo está en la zona sísmica V (la más alta de Ecuador). La NEC-15 exige sa(T=0) ≥ 1.5g en diseño espectral.' },
+            { icon: '🌿', title: 'Alternativa sostenible', text: 'La guadúa angustifolia tiene un módulo elástico de ~10 GPa y resistencia a tensión de ~40 MPa. Ideal para luces menores a 15 m y cargas peatonales.' }
+        ],
+        loadRef: 'NEC-15 §5.2 — Zona sísmica V: Sa(T=0) = 1.5g',
+        fogColor: 0x1a1a28,
+        fogDensity: 0.015
+    }
+};
+
+// ── PARAMS ────────────────────────────────────────────────────
+let params = {
+    length: 20.00,
+    height: 3.50,
+    width: 2.00,
+    panels: 4,
+    scale: 25,
+    load: 5.00,
+    mode: 'scale',
+    scenario: 'napo'
+};
+
+// ── INIT ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     initThree();
     initUI();
     updateAll();
-    
-    // Auto-resize
     window.addEventListener('resize', onWindowResize);
 });
 
-// --- SISTEMA DE RENDERING 3D (THREE.JS) ---
+// ── THREE.JS INIT ─────────────────────────────────────────────
 function initThree() {
     const container = document.getElementById('canvas-container');
-    
-    // Crear escena
+
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0a0e17);
-    
-    // Neblina sutil para profundidad
-    scene.fog = new THREE.FogExp2(0x0a0e17, 0.015);
-    
-    // Crear cámara
-    camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
-    camera.position.set(12, 6, 18);
-    
-    // Crear renderizador
+    scene.background = new THREE.Color(0x080c14);
+    scene.fog = new THREE.FogExp2(0x0d2137, 0.022);
+
+    camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.set(14, 8, 20);
+
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
     container.appendChild(renderer.domElement);
-    
-    // Controles de órbita
+
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.maxPolarAngle = Math.PI / 2 + 0.1; // No bajar demasiado de la tierra
+    controls.maxPolarAngle = Math.PI / 2 + 0.12;
     controls.minDistance = 2;
-    controls.maxDistance = 100;
-    
-    // Luces
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-    scene.add(ambientLight);
-    
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight1.position.set(20, 40, 20);
-    dirLight1.castShadow = true;
-    dirLight1.shadow.mapSize.width = 2048;
-    dirLight1.shadow.mapSize.height = 2048;
-    dirLight1.shadow.camera.near = 0.5;
-    dirLight1.shadow.camera.far = 100;
-    const d = 20;
-    dirLight1.shadow.camera.left = -d;
-    dirLight1.shadow.camera.right = d;
-    dirLight1.shadow.camera.top = d;
-    dirLight1.shadow.camera.bottom = -d;
-    scene.add(dirLight1);
-    
-    const dirLight2 = new THREE.DirectionalLight(0x3b82f6, 0.3); // Luz azul de relleno
-    dirLight2.position.set(-20, 20, -20);
-    scene.add(dirLight2);
-    
-    // Crear grupo del puente
+    controls.maxDistance = 120;
+
+    // ── CINEMATIC 5-POINT LIGHTING ────────────────────────────
+    // 1. Ambient — noche azulada
+    const ambient = new THREE.AmbientLight(0x1a2e4a, 0.4);
+    scene.add(ambient);
+
+    // 2. Sun — sol dorado amazónico
+    const sunLight = new THREE.DirectionalLight(0xffd580, 1.3);
+    sunLight.position.set(30, 60, 20);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width  = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.camera.near = 0.5;
+    sunLight.shadow.camera.far  = 150;
+    const sd = 25;
+    sunLight.shadow.camera.left   = -sd;
+    sunLight.shadow.camera.right  =  sd;
+    sunLight.shadow.camera.top    =  sd;
+    sunLight.shadow.camera.bottom = -sd;
+    scene.add(sunLight);
+
+    // 3. Fill — cielo azul frío
+    const fillLight = new THREE.DirectionalLight(0x4fc3f7, 0.45);
+    fillLight.position.set(-25, 18, -18);
+    scene.add(fillLight);
+
+    // 4. Rim — contorno metálico (blanco duro)
+    const rimLight = new THREE.DirectionalLight(0xffffff, 0.7);
+    rimLight.position.set(0, 5, -22);
+    scene.add(rimLight);
+
+    // 5. Orbital spotlight — luz naranja que orbita
+    spotLight = new THREE.PointLight(0xf97316, 0.8, 40, 2);
+    spotLight.position.set(10, 8, 0);
+    scene.add(spotLight);
+
+    // Groups
     bridgeGroup = new THREE.Group();
     scene.add(bridgeGroup);
-    
-    // Crear grupo de detalle de nudo (oculto inicialmente)
+
     nodeDetailGroup = new THREE.Group();
     scene.add(nodeDetailGroup);
-    
-    // Iniciar loop de animación
+
     animate();
 }
 
-function animate() {
-    requestAnimationFrame(animate);
-    controls.update();
-    renderer.render(scene, camera);
+// ── ANIMATION LOOP ────────────────────────────────────────────
+let lastTime = 0;
+
+function easeOutBack(t) {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
 
 function onWindowResize() {
     const container = document.getElementById('canvas-container');
     if (!container) return;
-    
-    const width = container.clientWidth;
-    const height = container.clientHeight;
-    
-    // Salvaguarda: si el contenedor está en transición y mide 0, evitar colgar la cámara con NaN
-    if (width <= 0 || height <= 0) {
-        return;
-    }
-    
-    camera.aspect = width / height;
+    const w = container.clientWidth, h = container.clientHeight;
+    if (w <= 0 || h <= 0) return;
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(width, height);
+    renderer.setSize(w, h);
 }
 
-// --- CONTROLADOR DE INTERFAZ DE USUARIO (UI) ---
+// ── UI INIT ───────────────────────────────────────────────────
 function initUI() {
-    // Inputs de Rango
-    const inputs = [
-        { id: 'param-length', key: 'length', valId: 'val-length', isFloat: true },
-        { id: 'param-height', key: 'height', valId: 'val-height', isFloat: true },
-        { id: 'param-width', key: 'width', valId: 'val-width', isFloat: true },
-        { id: 'param-panels', key: 'panels', valId: 'val-panels', isFloat: false },
-        { id: 'param-scale', key: 'scale', valId: 'val-scale', isFloat: false },
-        { id: 'param-load', key: 'load', valId: 'val-load', isFloat: true }
-    ];
-    
-    inputs.forEach(input => {
-        const el = document.getElementById(input.id);
-        const valEl = document.getElementById(input.valId);
-        
-        el.addEventListener('input', (e) => {
-            let val = input.isFloat ? parseFloat(e.target.value) : parseInt(e.target.value);
-            params[input.key] = val;
-            valEl.textContent = val.toFixed(input.isFloat ? 2 : 0);
+    // Range inputs
+    [
+        { id: 'param-length', key: 'length', valId: 'val-length', float: true },
+        { id: 'param-height', key: 'height', valId: 'val-height', float: true },
+        { id: 'param-width',  key: 'width',  valId: 'val-width',  float: true },
+        { id: 'param-panels', key: 'panels', valId: 'val-panels', float: false },
+        { id: 'param-scale',  key: 'scale',  valId: 'val-scale',  float: false },
+        { id: 'param-load',   key: 'load',   valId: 'val-load',   float: true }
+    ].forEach(cfg => {
+        const el = document.getElementById(cfg.id);
+        const vEl = document.getElementById(cfg.valId);
+        el.addEventListener('input', e => {
+            const v = cfg.float ? parseFloat(e.target.value) : parseInt(e.target.value);
+            params[cfg.key] = v;
+            vEl.textContent = v.toFixed(cfg.float ? 2 : 0);
             updateAll();
         });
     });
-    
-    // Botones de Modo Visual
-    const modeButtons = document.querySelectorAll('.mode-btn');
-    modeButtons.forEach(btn => {
+
+    // Mode buttons
+    document.querySelectorAll('.mode-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            modeButtons.forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            
-            params.mode = btn.getAttribute('data-mode');
-            
-            // Mostrar/ocultar leyendas e inputs
+            params.mode = btn.dataset.mode;
+
             const feaLegend = document.getElementById('fea-legend');
             const loadGroup = document.getElementById('group-load');
-            const infoTitle = document.getElementById('visual-mode-title');
-            
+            const title = document.getElementById('visual-mode-title');
+
             if (params.mode === 'fea') {
                 feaLegend.style.display = 'flex';
                 loadGroup.style.display = 'block';
-                infoTitle.textContent = 'Visualización: Análisis Estructural (FEA)';
+                title.textContent = 'Análisis FEA — Esfuerzos';
             } else if (params.mode === 'node') {
                 feaLegend.style.display = 'none';
                 loadGroup.style.display = 'none';
-                infoTitle.textContent = 'Visualización: Detalle de Nudo Típico';
+                title.textContent = 'Detalle de Nudo Típico';
             } else {
                 feaLegend.style.display = 'none';
                 loadGroup.style.display = 'block';
-                if (params.mode === 'scale') {
-                    infoTitle.textContent = 'Visualización: Escala 1:25 (Tallarines)';
-                } else {
-                    infoTitle.textContent = 'Visualización: Prototipo 1:1 (Real)';
-                }
+                title.textContent = params.mode === 'scale' ? 'Escala 1:25 (Tallarines)' : 'Acero A36 — Render Real';
             }
-            
             updateAll();
         });
     });
-    
-    // Tabs del Dashboard de Cálculos
-    const tabButtons = document.querySelectorAll('.tab-btn');
-    const tabPanes = document.querySelectorAll('.tab-pane');
-    
-    tabButtons.forEach(btn => {
+
+    // Dashboard tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
-            tabButtons.forEach(b => b.classList.remove('active'));
-            tabPanes.forEach(p => p.classList.remove('active'));
-            
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
             btn.classList.add('active');
-            const tabId = btn.getAttribute('data-tab');
-            document.getElementById(tabId).classList.add('active');
+            const tabId = btn.dataset.tab;
+            if (tabId) document.getElementById(tabId).classList.add('active');
         });
     });
-    
-    // Botones de exportación
+
+    // Ecuador scenario cards
+    document.querySelectorAll('.scenario-card').forEach(card => {
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.scenario-card').forEach(c => c.classList.remove('active'));
+            card.classList.add('active');
+            loadScenario(card.dataset.scenario);
+        });
+    });
+
+    // Export
     document.getElementById('btn-export-obj').addEventListener('click', exportOBJ);
     document.getElementById('btn-export-stl').addEventListener('click', exportSTL);
-    
-    // Control de Pantalla Completa
-    const btnFullscreen = document.getElementById('btn-fullscreen');
-    if (btnFullscreen) {
-        btnFullscreen.addEventListener('click', () => {
-            const container = document.getElementById('canvas-container');
+
+    // Fullscreen
+    const btnFS = document.getElementById('btn-fullscreen');
+    if (btnFS) {
+        btnFS.addEventListener('click', () => {
+            const cont = document.getElementById('canvas-container');
             if (!document.fullscreenElement) {
-                container.requestFullscreen().then(() => {
-                    btnFullscreen.innerHTML = '<span class="icon">🗗</span> Salir Pantalla Completa';
-                }).catch(err => {
-                    console.error(`Error al activar pantalla completa: ${err.message}`);
-                });
+                cont.requestFullscreen().then(() => {
+                    btnFS.innerHTML = '<span class="icon">🗗</span> Salir Pantalla Completa';
+                }).catch(err => console.error(err));
             } else {
                 document.exitFullscreen();
             }
         });
     }
 
-    // Monitorear cambios de pantalla completa
     document.addEventListener('fullscreenchange', () => {
-        const btnFullscreen = document.getElementById('btn-fullscreen');
-        if (btnFullscreen) {
-            if (!document.fullscreenElement) {
-                btnFullscreen.innerHTML = '<span class="icon">⛶</span> Pantalla Completa';
-            } else {
-                btnFullscreen.innerHTML = '<span class="icon">🗗</span> Salir Pantalla Completa';
-            }
+        const btnFS2 = document.getElementById('btn-fullscreen');
+        if (btnFS2) {
+            btnFS2.innerHTML = document.fullscreenElement
+                ? '<span class="icon">🗗</span> Salir Pantalla Completa'
+                : '<span class="icon">⛶</span> Pantalla Completa';
         }
-        // Redimensionamiento seguro multietapa (inmediato y progresivo durante la transición de salida)
-        onWindowResize();
-        setTimeout(onWindowResize, 50);
-        setTimeout(onWindowResize, 150);
-        setTimeout(onWindowResize, 300);
-        setTimeout(onWindowResize, 500);
+        triggerSafeResize();
     });
 
-    // --- CONTROLES DE INTERFAZ RESPONSIVA ---
-    
-    // Toggle de la barra lateral en celulares
+    // Cinematic Tour
+    const btnCine = document.getElementById('btn-cinematic');
+    if (btnCine) {
+        btnCine.addEventListener('click', () => {
+            cinematic.active = !cinematic.active;
+            const wrap = document.getElementById('tour-progress-wrap');
+
+            if (cinematic.active) {
+                cinematic.t = 0;
+                cinematic.savedPos    = camera.position.clone();
+                cinematic.savedTarget = controls.target.clone();
+                cinematic.radius = Math.max(params.length * 0.85, params.width * 1.5, 14);
+                btnCine.classList.add('active');
+                btnCine.querySelector('.cinematic-label').textContent = 'Detener Tour';
+                wrap.style.display = 'flex';
+                controls.enabled = false;
+            } else {
+                btnCine.classList.remove('active');
+                btnCine.querySelector('.cinematic-label').textContent = 'Tour Cinematográfico';
+                wrap.style.display = 'none';
+                if (cinematic.savedPos) camera.position.copy(cinematic.savedPos);
+                if (cinematic.savedTarget) controls.target.copy(cinematic.savedTarget);
+                controls.enabled = true;
+            }
+        });
+    }
+
+    // Stop cinematic on user interaction
+    renderer.domElement.addEventListener('pointerdown', () => {
+        if (cinematic.active) {
+            cinematic.active = false;
+            controls.enabled = true;
+            const btnC = document.getElementById('btn-cinematic');
+            if (btnC) {
+                btnC.classList.remove('active');
+                btnC.querySelector('.cinematic-label').textContent = 'Tour Cinematográfico';
+            }
+            const wrap = document.getElementById('tour-progress-wrap');
+            if (wrap) wrap.style.display = 'none';
+        }
+    });
+
+    // Sidebar mobile
     const sidebar = document.getElementById('sidebar');
-    const sidebarOverlay = document.getElementById('sidebar-overlay');
-    const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
-    const btnCloseSidebar = document.getElementById('btn-close-sidebar');
-    
-    function openSidebar() {
-        if (sidebar && sidebarOverlay) {
-            sidebar.classList.add('open');
-            sidebarOverlay.classList.add('active');
-            triggerSafeResize();
-        }
-    }
-    
-    function closeSidebar() {
-        if (sidebar && sidebarOverlay) {
-            sidebar.classList.remove('open');
-            sidebarOverlay.classList.remove('active');
-            triggerSafeResize();
-        }
-    }
-    
-    if (btnToggleSidebar) btnToggleSidebar.addEventListener('click', openSidebar);
-    if (btnCloseSidebar) btnCloseSidebar.addEventListener('click', closeSidebar);
-    if (sidebarOverlay) sidebarOverlay.addEventListener('click', closeSidebar);
-    
-    // Toggle del panel de cálculos inferior (colapsar / expandir)
-    const dashboardPanel = document.getElementById('dashboard-panel');
-    const btnToggleDashboard = document.getElementById('btn-toggle-dashboard');
-    
-    if (btnToggleDashboard && dashboardPanel) {
-        btnToggleDashboard.addEventListener('click', () => {
-            const isCollapsed = dashboardPanel.classList.toggle('collapsed');
-            btnToggleDashboard.textContent = isCollapsed ? '▲' : '▼';
-            btnToggleDashboard.title = isCollapsed ? 'Expandir panel' : 'Colapsar panel';
-            
-            // Cada vez que cambia la altura del panel, el canvas de Three.js cambia de tamaño.
-            // Forzar actualización del visor en varias etapas durante la transición CSS (300ms)
+    const overlay = document.getElementById('sidebar-overlay');
+    const btnOpen = document.getElementById('btn-toggle-sidebar');
+    const btnClose = document.getElementById('btn-close-sidebar');
+
+    const openSidebar = () => {
+        sidebar?.classList.add('open');
+        overlay?.classList.add('active');
+        triggerSafeResize();
+    };
+    const closeSidebar = () => {
+        sidebar?.classList.remove('open');
+        overlay?.classList.remove('active');
+        triggerSafeResize();
+    };
+
+    btnOpen?.addEventListener('click', openSidebar);
+    btnClose?.addEventListener('click', closeSidebar);
+    overlay?.addEventListener('click', closeSidebar);
+
+    // Dashboard collapse
+    const dashPanel = document.getElementById('dashboard-panel');
+    const btnDash = document.getElementById('btn-toggle-dashboard');
+    if (btnDash && dashPanel) {
+        btnDash.addEventListener('click', () => {
+            const collapsed = dashPanel.classList.toggle('collapsed');
+            btnDash.textContent = collapsed ? '▲' : '▼';
+            btnDash.title = collapsed ? 'Expandir panel' : 'Colapsar panel';
             triggerSafeResize();
         });
     }
-    
-    // Función auxiliar para redimensionamiento en múltiples etapas
-    function triggerSafeResize() {
-        onWindowResize();
-        setTimeout(onWindowResize, 50);
-        setTimeout(onWindowResize, 100);
-        setTimeout(onWindowResize, 200);
-        setTimeout(onWindowResize, 350);
-        setTimeout(onWindowResize, 500);
+}
+
+// ── LOAD SCENARIO ─────────────────────────────────────────────
+function loadScenario(id) {
+    const sc = ECUADOR_SCENARIOS[id];
+    if (!sc) return;
+    params.scenario = id;
+
+    // Animate sliders to new values
+    Object.entries(sc.params).forEach(([key, val]) => {
+        params[key] = val;
+        const inputEl = document.getElementById('param-' + key);
+        const valEl   = document.getElementById('val-' + key);
+        if (inputEl) {
+            inputEl.value = val;
+            if (valEl) {
+                const isFloat = ['length','height','width','load'].includes(key);
+                valEl.textContent = isFloat ? val.toFixed(2) : val;
+            }
+        }
+    });
+
+    // Update scenario badge
+    const badge = document.getElementById('scenario-badge-text');
+    const badgeIcon = document.querySelector('.scenario-badge-icon');
+    if (badge) badge.textContent = sc.badgeText;
+    if (badgeIcon) badgeIcon.textContent = sc.icon;
+
+    // Update Ecuador tab content
+    updateEcuadorTab(sc);
+
+    // Update fog for environment
+    if (scene) {
+        scene.fog = new THREE.FogExp2(sc.fogColor, sc.fogDensity);
+    }
+
+    updateAll();
+}
+
+function updateEcuadorTab(sc) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+    set('ec-icon', sc.icon);
+    set('ec-title', sc.name);
+    set('ec-subtitle', sc.subtitle);
+    set('ec-type', sc.type);
+    set('ec-flow', sc.flow);
+    set('ec-span', sc.span);
+    set('ec-budget', sc.budget);
+    set('ec-beneficiaries', sc.beneficiaries);
+    set('edu-fact-text', sc.fact);
+    set('ec-load-formula', 'q_p = 4.8 kN/m²');
+
+    // Design load calc
+    const designLoad = (4.8 * sc.params.width * sc.params.length).toFixed(1);
+    set('ec-design-load', designLoad);
+
+    // Challenges
+    const cl = document.getElementById('challenges-list');
+    if (cl) {
+        cl.innerHTML = sc.challenges.map(c => `
+            <div class="challenge-item">
+                <span class="challenge-icon">${c.icon}</span>
+                <div>
+                    <strong>${c.title}</strong>
+                    <p>${c.text}</p>
+                </div>
+            </div>
+        `).join('');
     }
 }
 
-// --- ACTUALIZACIÓN DE DATOS Y RENDERIZADO ---
+function triggerSafeResize() {
+    onWindowResize();
+    [50, 150, 300, 500].forEach(t => setTimeout(onWindowResize, t));
+}
+
+// ── MAIN UPDATE ───────────────────────────────────────────────
 function updateAll() {
-    // 1. Cálculos de Geometría
-    const Lp = params.length / params.panels; // Longitud panel real
-    const d = Math.sqrt(Lp * Lp + params.height * params.height); // Diagonal real
+    // Geometry calcs
+    const Lp = params.length / params.panels;
+    const d = Math.sqrt(Lp * Lp + params.height * params.height);
     const thetaRad = Math.atan(params.height / Lp);
-    const thetaDeg = thetaRad * (180 / Math.PI); // Ángulo grados
-    
-    // Dimensiones en modelo (cm)
-    const scaleFactor = params.scale;
-    const modelL = (params.length / scaleFactor) * 100;
-    const modelH = (params.height / scaleFactor) * 100;
-    const modelB = (params.width / scaleFactor) * 100;
-    const modelLp = (Lp / scaleFactor) * 100;
-    const modelD = (d / scaleFactor) * 100;
-    
-    // Actualizar Textos en Dashboard (Geometría)
-    document.getElementById('model-dim-x').textContent = `${modelL.toFixed(2)} cm`;
-    document.getElementById('model-dim-y').textContent = `${modelH.toFixed(2)} cm`;
-    document.getElementById('model-dim-z').textContent = `${modelB.toFixed(2)} cm`;
-    
-    document.getElementById('geo-real-L').textContent = params.length.toFixed(2);
-    document.getElementById('geo-model-L').textContent = modelL.toFixed(2);
-    document.getElementById('geo-real-h').textContent = params.height.toFixed(2);
-    document.getElementById('geo-model-h').textContent = modelH.toFixed(2);
-    document.getElementById('geo-real-b').textContent = params.width.toFixed(2);
-    document.getElementById('geo-model-b').textContent = modelB.toFixed(2);
-    document.getElementById('geo-real-Lp').textContent = Lp.toFixed(2);
-    document.getElementById('geo-model-Lp').textContent = modelLp.toFixed(2);
-    
-    // Fórmulas matemáticas detalladas
-    document.getElementById('geo-math-pitagoras').innerHTML = 
-        `d_m = \\sqrt{Lp_m^2 + h_m^2} = \\sqrt{${modelLp.toFixed(2)}^2 + ${modelH.toFixed(2)}^2} = \\sqrt{${(modelLp*modelLp).toFixed(1)} + ${(modelH*modelH).toFixed(1)}}`;
-    document.getElementById('geo-model-d').textContent = modelD.toFixed(2);
-    document.getElementById('geo-real-d').textContent = d.toFixed(2);
-    document.getElementById('geo-math-trig').innerHTML = 
-        `\\theta = \\arctan\\left(\\frac{h_m}{Lp_m}\\right) = \\arctan\\left(\\frac{${modelH.toFixed(2)}}{${modelLp.toFixed(2)}}\\right) = \\arctan(${ (modelH/modelLp).toFixed(4) })`;
-    document.getElementById('geo-theta').textContent = thetaDeg.toFixed(2);
-    
-    // 2. Cálculos de Materiales
-    const qtySup = params.panels;
-    const qtyInf = params.panels;
-    const qtyDiag = 2 * params.panels; // Warren Truss estándar sin verticales tiene 2n diagonales, pero con verticales son n diagonales
-    // Nota: De acuerdo a nuestra topología, dibujamos n diagonales alternadas por cercha. 
-    // Para n paneles:
-    // Celosía con diagonales alternadas:
-    // Hay exactamente n diagonales por celosía lateral.
-    const qtyDiagPerSide = params.panels;
-    const qtyVertPerSide = params.panels + 1; // x=0, Lp, 2Lp... n*Lp
-    
-    const lenSup = modelLp;
-    const lenInf = modelLp;
-    const lenDiag = modelD;
-    const lenVert = modelH;
-    
-    const totSup = qtySup * lenSup;
-    const totInf = qtyInf * lenInf;
-    const totDiag = qtyDiagPerSide * lenDiag;
-    const totVert = qtyVertPerSide * lenVert;
+    const thetaDeg = thetaRad * (180 / Math.PI);
+
+    const sf = params.scale;
+    const modelL  = (params.length / sf) * 100;
+    const modelH  = (params.height / sf) * 100;
+    const modelB  = (params.width  / sf) * 100;
+    const modelLp = (Lp / sf) * 100;
+    const modelD  = (d  / sf) * 100;
+
+    // Overlay stats
+    document.getElementById('model-dim-x').textContent = modelL.toFixed(2) + ' cm';
+    document.getElementById('model-dim-y').textContent = modelH.toFixed(2) + ' cm';
+    document.getElementById('model-dim-z').textContent = modelB.toFixed(2) + ' cm';
+
+    // Geometry tab
+    const s = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+    s('geo-real-L', params.length.toFixed(2));
+    s('geo-model-L', modelL.toFixed(2));
+    s('geo-real-h', params.height.toFixed(2));
+    s('geo-model-h', modelH.toFixed(2));
+    s('geo-real-b', params.width.toFixed(2));
+    s('geo-model-b', modelB.toFixed(2));
+    s('geo-real-Lp', Lp.toFixed(2));
+    s('geo-model-Lp', modelLp.toFixed(2));
+
+    const mpEl = document.getElementById('geo-math-pitagoras');
+    if (mpEl) mpEl.textContent = `d = \\sqrt{${modelLp.toFixed(1)}^2 + ${modelH.toFixed(1)}^2}`;
+    s('geo-model-d', modelD.toFixed(2));
+    s('geo-real-d', d.toFixed(2));
+
+    const mtEl = document.getElementById('geo-math-trig');
+    if (mtEl) mtEl.textContent = `\\theta = \\arctan(${modelH.toFixed(2)} / ${modelLp.toFixed(2)})`;
+    s('geo-theta', thetaDeg.toFixed(2));
+
+    // Materials
+    const n = params.panels;
+    const lenSup = modelLp, lenInf = modelLp;
+    const lenDiag = modelD, lenVert = modelH;
+    const totSup  = n * lenSup;
+    const totInf  = n * lenInf;
+    const totDiag = n * lenDiag;
+    const totVert = (n + 1) * lenVert;
     const subtotalSide = totSup + totInf + totDiag + totVert;
-    
-    // Travesaños superiores e inferiores (ancho b)
-    const qtyTravSup = params.panels + 1;
-    const qtyTravInf = params.panels + 1;
+
+    const qtyTravSup = n + 1, qtyTravInf = n + 1;
     const lenTrav = modelB;
     const totTravSup = qtyTravSup * lenTrav;
     const totTravInf = qtyTravInf * lenTrav;
-    
-    // Arriostramientos (Wind bracing en X arriba)
-    // Va de L_i a R_{i+1} en la cuerda superior. Longitud = sqrt(Lp^2 + b^2)
-    const lenArr = Math.sqrt(modelLp*modelLp + modelB*modelB);
-    const qtyArr = 2 * params.panels; // 2 por panel superior
+
+    const lenArr = Math.sqrt(modelLp * modelLp + modelB * modelB);
+    const qtyArr = 2 * n;
     const totArr = qtyArr * lenArr;
-    
-    const grandTotalStruct = (2 * subtotalSide) + totTravSup + totTravInf + totArr;
-    // Multiplicado por 15 (pues cada barra estructural tiene 15 tallarines)
-    const grandTotalSpaghetti = grandTotalStruct * 15;
-    
-    // Masa promedio: 0.08 g/cm por fideo individual
-    const estMassSpaghetti = grandTotalSpaghetti * 0.08;
-    const estMassGlueThread = estMassSpaghetti * 0.18; // ~18% peso extra en hilo y pegamento UHU
-    const totMassModel = estMassSpaghetti + estMassGlueThread;
-    const totWeightModel = (totMassModel / 1000) * 9.81; // Newton
-    
-    // Inyectar en Dashboard (Materiales)
-    document.getElementById('mat-qty-sup').textContent = qtySup;
-    document.getElementById('mat-len-sup').textContent = lenSup.toFixed(2);
-    document.getElementById('mat-total-sup').textContent = totSup.toFixed(2);
-    
-    document.getElementById('mat-qty-inf').textContent = qtyInf;
-    document.getElementById('mat-len-inf').textContent = lenInf.toFixed(2);
-    document.getElementById('mat-total-inf').textContent = totInf.toFixed(2);
-    
-    document.getElementById('mat-qty-diag').textContent = qtyDiagPerSide;
-    document.getElementById('mat-len-diag').textContent = lenDiag.toFixed(2);
-    document.getElementById('mat-total-diag').textContent = totDiag.toFixed(2);
-    
-    document.getElementById('mat-qty-vert').textContent = qtyVertPerSide;
-    document.getElementById('mat-len-vert').textContent = lenVert.toFixed(2);
-    document.getElementById('mat-total-vert').textContent = totVert.toFixed(2);
-    
-    document.getElementById('mat-subtotal-side').textContent = subtotalSide.toFixed(2);
-    
-    document.getElementById('mat-total-left').textContent = subtotalSide.toFixed(2);
-    document.getElementById('mat-total-right').textContent = subtotalSide.toFixed(2);
-    
-    document.getElementById('mat-qty-trav-sup').textContent = qtyTravSup;
-    document.getElementById('mat-len-trav-sup').textContent = lenTrav.toFixed(2);
-    document.getElementById('mat-total-trav-sup').textContent = totTravSup.toFixed(2);
-    
-    document.getElementById('mat-qty-trav-inf').textContent = qtyTravInf;
-    document.getElementById('mat-len-trav-inf').textContent = lenTrav.toFixed(2);
-    document.getElementById('mat-total-trav-inf').textContent = totTravInf.toFixed(2);
-    
-    document.getElementById('mat-qty-arr').textContent = qtyArr;
-    document.getElementById('mat-len-arr').textContent = lenArr.toFixed(2);
-    document.getElementById('mat-total-arr').textContent = totArr.toFixed(2);
-    
-    document.getElementById('mat-grand-total').textContent = grandTotalStruct.toFixed(2);
-    document.getElementById('mat-grand-total-m').textContent = (grandTotalStruct / 100).toFixed(2);
-    document.getElementById('mat-est-mass').textContent = estMassSpaghetti.toFixed(1);
-    document.getElementById('mat-total-mass').textContent = totMassModel.toFixed(1);
-    document.getElementById('mat-est-weight').textContent = totWeightModel.toFixed(2);
-    
-    // 3. Simulación Estructural (FEA)
-    const { nodes2D, elements2D, displacements } = runFEA();
-    
-    // Reacciones y carga
+
+    const grandTotal = (2 * subtotalSide) + totTravSup + totTravInf + totArr;
+    const grandTotalSpaghetti = grandTotal * 15;
+    const estMass = grandTotalSpaghetti * 0.08;
+    const totMass = estMass * 1.18;
+    const totWeight = (totMass / 1000) * 9.81;
+
+    s('mat-qty-sup', n);  s('mat-len-sup', lenSup.toFixed(2));  s('mat-total-sup', totSup.toFixed(2));
+    s('mat-qty-inf', n);  s('mat-len-inf', lenInf.toFixed(2));  s('mat-total-inf', totInf.toFixed(2));
+    s('mat-qty-diag', n); s('mat-len-diag', lenDiag.toFixed(2)); s('mat-total-diag', totDiag.toFixed(2));
+    s('mat-qty-vert', n+1); s('mat-len-vert', lenVert.toFixed(2)); s('mat-total-vert', totVert.toFixed(2));
+    s('mat-subtotal-side', subtotalSide.toFixed(2));
+    s('mat-total-left', subtotalSide.toFixed(2));
+    s('mat-total-right', subtotalSide.toFixed(2));
+    s('mat-qty-trav-sup', qtyTravSup); s('mat-len-trav-sup', lenTrav.toFixed(2)); s('mat-total-trav-sup', totTravSup.toFixed(2));
+    s('mat-qty-trav-inf', qtyTravInf); s('mat-len-trav-inf', lenTrav.toFixed(2)); s('mat-total-trav-inf', totTravInf.toFixed(2));
+    s('mat-qty-arr', qtyArr); s('mat-len-arr', lenArr.toFixed(2)); s('mat-total-arr', totArr.toFixed(2));
+    s('mat-grand-total', grandTotal.toFixed(2));
+    s('mat-grand-total-m', (grandTotal / 100).toFixed(2));
+    s('mat-est-mass', estMass.toFixed(1));
+    s('mat-total-mass', totMass.toFixed(1));
+    s('mat-est-weight', totWeight.toFixed(2));
+
+    // FEA
+    const { nodes2D, elements2D } = runFEA();
+
     const loadP = params.load;
-    const ownWeight = totWeightModel;
-    const reaction = (loadP + ownWeight) / 2;
-    
-    document.getElementById('static-load-val').textContent = loadP.toFixed(2);
-    document.getElementById('static-weight-val').textContent = ownWeight.toFixed(2);
-    document.getElementById('static-reaction-val').textContent = reaction.toFixed(2);
-    
-    // Inyectar esfuerzos críticos en la tabla
-    const stressesTable = document.getElementById('table-stresses');
-    stressesTable.innerHTML = '';
-    
-    // Mostrar esfuerzos más relevantes
-    elements2D.forEach((el, index) => {
-        let typeName = "";
-        if (el.type === 'bottom') typeName = `Cuerda Inf. (${el.nodeA}-${el.nodeB})`;
-        else if (el.type === 'top') typeName = `Cuerda Sup. (${el.nodeA - (params.panels+1)}-${el.nodeB - (params.panels+1)})`;
-        else if (el.type === 'vertical') typeName = `Vertical (${el.nodeA}-${el.nodeB - (params.panels+1)})`;
-        else if (el.type === 'diagonal') typeName = `Diagonal (${el.nodeA}-${el.nodeB - (params.panels+1)})`;
-        
-        let forceStr = Math.abs(el.force).toFixed(2) + " N";
-        let stateClass = "";
-        let stateText = "";
-        
-        if (el.force > 0.01) {
-            stateClass = "stress-tens";
-            stateText = "Tracción (Tensión)";
-        } else if (el.force < -0.01) {
-            stateClass = "stress-comp";
-            stateText = "Compresión";
-        } else {
-            stateClass = "stress-zero";
-            stateText = "Fuerza Cero";
-            forceStr = "0.00 N";
-        }
-        
-        // Agregar a la tabla sólo elementos críticos (limitar a 8 para limpieza visual)
-        if (index < 12 || el.type === 'diagonal') {
+    const ownW = totWeight;
+    const reaction = (loadP + ownW) / 2;
+
+    s('static-load-val', loadP.toFixed(2));
+    s('static-weight-val', ownW.toFixed(2));
+    s('static-reaction-val', reaction.toFixed(2));
+
+    // Stress table
+    const tBody = document.getElementById('table-stresses');
+    if (tBody) {
+        tBody.innerHTML = '';
+        elements2D.forEach((el, i) => {
+            if (i >= 14 && el.type !== 'diagonal') return;
+            let name = '';
+            if (el.type === 'bottom')    name = `Cuerda Inf. (${el.nodeA}–${el.nodeB})`;
+            else if (el.type === 'top')  name = `Cuerda Sup.`;
+            else if (el.type === 'vertical') name = `Vertical`;
+            else if (el.type === 'diagonal') name = `Diagonal`;
+
+            const absF = Math.abs(el.force).toFixed(2);
+            let cls = 'stress-zero', state = 'Fuerza Cero';
+            if (el.force >  0.01) { cls = 'stress-tens'; state = 'Tracción'; }
+            if (el.force < -0.01) { cls = 'stress-comp'; state = 'Compresión'; }
+
             const row = document.createElement('tr');
             row.innerHTML = `
-                <td>${typeName}</td>
-                <td class="${stateClass}">${stateText}</td>
-                <td class="math">${forceStr}</td>
-                <td><span class="dot" style="background-color: ${getElementColorHex(el.force)}"></span></td>
-            `;
-            stressesTable.appendChild(row);
-        }
-    });
-    
-    // 4. Renderizado 3D de la Estructura o Nudo
+                <td>${name}</td>
+                <td class="${cls}">${state}</td>
+                <td class="math">${absF} N</td>
+                <td><span class="dot" style="background:${getElemColor(el.force)};display:inline-block;width:8px;height:8px;border-radius:50%"></span></td>`;
+            tBody.appendChild(row);
+        });
+    }
+
+    // Safety semaphore
+    const maxForce = Math.max(...elements2D.map(e => Math.abs(e.force)));
+    updateSemaphore(maxForce, loadP);
+
+    // Update Ecuador tab design load dynamically
+    const sc = ECUADOR_SCENARIOS[params.scenario];
+    if (sc) {
+        const designLoad = (4.8 * params.width * params.length).toFixed(1);
+        s('ec-design-load', designLoad);
+    }
+
+    // 3D render
     if (params.mode === 'node') {
         bridgeGroup.visible = false;
         nodeDetailGroup.visible = true;
@@ -470,883 +631,972 @@ function updateAll() {
         bridgeGroup.visible = true;
         nodeDetailGroup.visible = false;
         buildBridge3D(nodes2D, elements2D);
-        
-        // 5. Ajustar Cámara Dinámicamente para que el puente se vea grande y centrado
-        const targetDist = Math.max(params.length * 0.9, params.width * 1.5, params.height * 2.0) * 1.3;
-        
-        // Mantener la dirección de la cámara pero ajustar la distancia al target
+
+        const targetDist = Math.max(params.length * 0.95, params.width * 1.6, params.height * 2.2) * 1.35;
         const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
-        
-        if (dir.lengthSq() === 0) {
-            dir.set(0.6, 0.4, 0.8).normalize();
-        }
-        
-        // Establecer el punto de rotación en el centro del puente
+        if (dir.lengthSq() === 0) dir.set(0.6, 0.4, 0.8).normalize();
         controls.target.set(0, params.height / 2, 0);
-        
-        // Mover la cámara a la distancia ideal conservando el ángulo
-        camera.position.copy(dir.multiplyScalar(targetDist).add(controls.target));
+        if (!cinematic.active) {
+            camera.position.copy(dir.multiplyScalar(targetDist).add(controls.target));
+        }
+        cinematic.radius = targetDist * 1.1;
     }
 }
 
-// --- RESOLVEDOR DE RIGIDEZ DIRECTA 2D (FEA) ---
+function updateSemaphore(maxF, loadP) {
+    const ratio = maxF / Math.max(loadP * 3, 1);
+    const gEl = document.getElementById('sem-green');
+    const yEl = document.getElementById('sem-yellow');
+    const rEl = document.getElementById('sem-red');
+    const tEl = document.getElementById('safety-text');
+
+    gEl?.classList.remove('active');
+    yEl?.classList.remove('active');
+    rEl?.classList.remove('active');
+
+    if (ratio < 0.5) {
+        gEl?.classList.add('active');
+        if (tEl) { tEl.textContent = 'Seguro'; tEl.style.color = '#10d48a'; }
+    } else if (ratio < 0.85) {
+        yEl?.classList.add('active');
+        if (tEl) { tEl.textContent = 'Revisión'; tEl.style.color = '#facc15'; }
+    } else {
+        rEl?.classList.add('active');
+        if (tEl) { tEl.textContent = 'Crítico'; tEl.style.color = '#ef4444'; }
+    }
+}
+
+// ── FEA ───────────────────────────────────────────────────────
 function runFEA() {
     const n = params.panels;
     const Lp = params.length / n;
     const h = params.height;
-    const numNodes = 2 * n + 2;
-    
-    // Construir nodos 2D
     const nodes2D = [];
-    // Nodos inferiores: 0 a n
+
     for (let i = 0; i <= n; i++) {
-        nodes2D.push({
-            x: i * Lp,
-            y: 0,
-            fx: 0,
-            fy: 0,
-            rx: (i === 0), // Apoyo fijo en x=0
-            ry: (i === 0 || i === n) // Apoyos simples en y
-        });
+        nodes2D.push({ x: i * Lp, y: 0, fx: 0, fy: 0, rx: i === 0, ry: i === 0 || i === n });
     }
-    // Nodos superiores: n+1 a 2n+1
     for (let i = 0; i <= n; i++) {
-        nodes2D.push({
-            x: i * Lp,
-            y: h,
-            fx: 0,
-            fy: 0,
-            rx: false,
-            ry: false
-        });
+        nodes2D.push({ x: i * Lp, y: h, fx: 0, fy: 0, rx: false, ry: false });
     }
-    
-    // Aplicar cargas
-    // Carga de prueba central P
+
     const loadP = params.load;
     if (n % 2 === 0) {
-        const centerNodeIndex = n / 2;
-        nodes2D[centerNodeIndex].fy -= loadP / 2; // Carga estática por celosía
+        nodes2D[n / 2].fy -= loadP / 2;
     } else {
-        const leftCenter = Math.floor(n / 2);
-        const rightCenter = Math.ceil(n / 2);
-        nodes2D[leftCenter].fy -= loadP / 4;
-        nodes2D[rightCenter].fy -= loadP / 4;
+        nodes2D[Math.floor(n/2)].fy -= loadP / 4;
+        nodes2D[Math.ceil(n/2)].fy  -= loadP / 4;
     }
-    
-    // Añadir peso propio distribuido en nodos inferiores
-    // Calculamos el peso aproximado (ej: 0.83 N por celosía)
+
     const subtotalSide = (2 * n * Lp + n * Math.sqrt(Lp*Lp + h*h) + (n+1)*h);
-    const weightSide = (subtotalSide * 100 * 15 * 0.08 * 1.18 / 1000) * 9.81 / 2; // Fuerza en N
+    const weightSide = (subtotalSide * 100 * 15 * 0.08 * 1.18 / 1000) * 9.81 / 2;
     const wNode = weightSide / (n + 1);
-    for (let i = 0; i <= n; i++) {
-        nodes2D[i].fy -= wNode;
-    }
-    
-    // Construir elementos 2D
+    for (let i = 0; i <= n; i++) nodes2D[i].fy -= wNode;
+
     const elements2D = [];
-    const E = 2.0e9; // Módulo elástico típico fideo (Pa)
-    const A = 15 * Math.PI * Math.pow(0.0008, 2); // Área sección (15 tallarines de 0.8mm radio)
-    
-    // Cuerdas inferiores
+    const E = 2.0e9, A = 15 * Math.PI * Math.pow(0.0008, 2);
+
+    for (let i = 0; i < n; i++) elements2D.push({ nodeA: i, nodeB: i+1, E, A, type: 'bottom' });
+    for (let i = 0; i < n; i++) elements2D.push({ nodeA: n+1+i, nodeB: n+2+i, E, A, type: 'top' });
+    for (let i = 0; i <= n; i++) elements2D.push({ nodeA: i, nodeB: n+1+i, E, A, type: 'vertical' });
     for (let i = 0; i < n; i++) {
-        elements2D.push({ nodeA: i, nodeB: i + 1, E, A, type: 'bottom' });
+        if (i % 2 === 0) elements2D.push({ nodeA: i, nodeB: n+2+i, E, A, type: 'diagonal' });
+        else             elements2D.push({ nodeA: n+1+i, nodeB: i+1, E, A, type: 'diagonal' });
     }
-    // Cuerdas superiores
-    for (let i = 0; i < n; i++) {
-        elements2D.push({ nodeA: n + 1 + i, nodeB: n + 1 + i + 1, E, A, type: 'top' });
-    }
-    // Verticales
-    for (let i = 0; i <= n; i++) {
-        elements2D.push({ nodeA: i, nodeB: n + 1 + i, E, A, type: 'vertical' });
-    }
-    // Diagonales alternadas
-    for (let i = 0; i < n; i++) {
-        if (i % 2 === 0) {
-            elements2D.push({ nodeA: i, nodeB: n + 1 + i + 1, E, A, type: 'diagonal' });
-        } else {
-            elements2D.push({ nodeA: n + 1 + i, nodeB: i + 1, E, A, type: 'diagonal' });
-        }
-    }
-    
-    // Resolver sistema
-    const displacements = solveDirectStiffness2D(nodes2D, elements2D);
-    
-    return { nodes2D, elements2D, displacements };
+
+    solveDirectStiffness2D(nodes2D, elements2D);
+    return { nodes2D, elements2D };
 }
 
 function solveDirectStiffness2D(nodes, elements) {
-    const numNodes = nodes.length;
-    const DOF = numNodes * 2;
-    
-    const K = Array(DOF).fill(0).map(() => Array(DOF).fill(0));
-    const F = Array(DOF).fill(0);
-    
-    for (let i = 0; i < numNodes; i++) {
-        F[i * 2] = nodes[i].fx;
-        F[i * 2 + 1] = nodes[i].fy;
-    }
-    
+    const dof = nodes.length * 2;
+    const K = Array.from({length: dof}, () => new Float64Array(dof));
+    const F = new Float64Array(dof);
+
+    nodes.forEach((n, i) => { F[i*2] = n.fx; F[i*2+1] = n.fy; });
+
     for (const el of elements) {
-        const nA = nodes[el.nodeA];
-        const nB = nodes[el.nodeB];
-        
-        const dx = nB.x - nA.x;
-        const dy = nB.y - nA.y;
+        const nA = nodes[el.nodeA], nB = nodes[el.nodeB];
+        const dx = nB.x - nA.x, dy = nB.y - nA.y;
         const L = Math.sqrt(dx*dx + dy*dy);
-        
-        const c = dx / L;
-        const s = dy / L;
-        const kFactor = (el.E * el.A) / L;
-        
-        const kLocal = [
-            [ c*c,  c*s, -c*c, -c*s],
-            [ c*s,  s*s, -c*s, -s*s],
-            [-c*c, -c*s,  c*c,  c*s],
-            [-c*s, -s*s,  c*s,  s*s]
-        ];
-        
-        const idx = [el.nodeA * 2, el.nodeA * 2 + 1, el.nodeB * 2, el.nodeB * 2 + 1];
-        
-        for (let i = 0; i < 4; i++) {
-            for (let j = 0; j < 4; j++) {
-                K[idx[i]][idx[j]] += kFactor * kLocal[i][j];
-            }
-        }
+        const c = dx/L, s = dy/L;
+        const kf = (el.E * el.A) / L;
+        const kl = [[c*c, c*s, -c*c, -c*s],[c*s, s*s, -c*s, -s*s],[-c*c,-c*s,c*c,c*s],[-c*s,-s*s,c*s,s*s]];
+        const idx = [el.nodeA*2, el.nodeA*2+1, el.nodeB*2, el.nodeB*2+1];
+        for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) K[idx[i]][idx[j]] += kf * kl[i][j];
     }
-    
-    // Aplicar condiciones de apoyo (método de penalización)
-    const penalty = 1e16;
-    for (let i = 0; i < numNodes; i++) {
-        if (nodes[i].rx) K[i * 2][i * 2] += penalty;
-        if (nodes[i].ry) K[i * 2 + 1][i * 2 + 1] += penalty;
-    }
-    
-    // Resolver sistema
-    const U = solveLinearSystem(K, F);
-    
-    // Calcular fuerzas internas
+
+    const P = 1e16;
+    nodes.forEach((n, i) => {
+        if (n.rx) K[i*2][i*2] += P;
+        if (n.ry) K[i*2+1][i*2+1] += P;
+    });
+
+    const U = solveGauss(K, Array.from(F));
+
     for (const el of elements) {
-        const nA = nodes[el.nodeA];
-        const nB = nodes[el.nodeB];
-        
-        const dx = nB.x - nA.x;
-        const dy = nB.y - nA.y;
+        const nA = nodes[el.nodeA], nB = nodes[el.nodeB];
+        const dx = nB.x - nA.x, dy = nB.y - nA.y;
         const L = Math.sqrt(dx*dx + dy*dy);
-        
-        const c = dx / L;
-        const s = dy / L;
-        
-        const uA_x = U[el.nodeA * 2];
-        const uA_y = U[el.nodeA * 2 + 1];
-        const uB_x = U[el.nodeB * 2];
-        const uB_y = U[el.nodeB * 2 + 1];
-        
-        const elongation = (uB_x - uA_x) * c + (uB_y - uA_y) * s;
-        el.force = (el.E * el.A / L) * elongation;
+        const c = dx/L, s = dy/L;
+        const elong = (U[el.nodeB*2]-U[el.nodeA*2])*c + (U[el.nodeB*2+1]-U[el.nodeA*2+1])*s;
+        el.force = (el.E * el.A / L) * elong;
     }
-    
-    return U;
 }
 
-// Resolver Ax = b por Eliminación Gaussiana
-function solveLinearSystem(A, b) {
+function solveGauss(A, b) {
     const n = b.length;
     for (let i = 0; i < n; i++) {
-        let maxEl = Math.abs(A[i][i]);
-        let maxRow = i;
-        for (let k = i + 1; k < n; k++) {
-            if (Math.abs(A[k][i]) > maxEl) {
-                maxEl = Math.abs(A[k][i]);
-                maxRow = k;
-            }
-        }
-        for (let k = i; k < n; k++) {
-            const tmp = A[maxRow][k];
-            A[maxRow][k] = A[i][k];
-            A[i][k] = tmp;
-        }
-        const tmp = b[maxRow];
-        b[maxRow] = b[i];
-        b[i] = tmp;
-        
-        if (Math.abs(A[i][i]) < 1e-12) {
-            // Singular, evitar división por cero
-            A[i][i] = 1e-12;
-        }
-        
-        for (let k = i + 1; k < n; k++) {
-            const c = -A[k][i] / A[i][i];
-            for (let j = i; j < n; j++) {
-                if (i === j) {
-                    A[k][j] = 0;
-                } else {
-                    A[k][j] += c * A[i][j];
-                }
-            }
-            b[k] += c * b[i];
+        let maxR = i;
+        for (let k = i+1; k < n; k++) if (Math.abs(A[k][i]) > Math.abs(A[maxR][i])) maxR = k;
+        [A[i], A[maxR]] = [A[maxR], A[i]];
+        [b[i], b[maxR]] = [b[maxR], b[i]];
+        if (Math.abs(A[i][i]) < 1e-12) A[i][i] = 1e-12;
+        for (let k = i+1; k < n; k++) {
+            const f = -A[k][i] / A[i][i];
+            for (let j = i; j < n; j++) A[k][j] = j === i ? 0 : A[k][j] + f * A[i][j];
+            b[k] += f * b[i];
         }
     }
-    
-    const x = Array(n).fill(0);
-    for (let i = n - 1; i >= 0; i--) {
+    const x = new Array(n).fill(0);
+    for (let i = n-1; i >= 0; i--) {
         x[i] = b[i] / A[i][i];
-        for (let k = i - 1; k >= 0; k--) {
-            b[k] -= A[k][i] * x[i];
-        }
+        for (let k = i-1; k >= 0; k--) b[k] -= A[k][i] * x[i];
     }
     return x;
 }
 
-// Mapear fuerza a color
-// Verde: sin esfuerzo
-function getElementColorHex(force) {
-    if (Math.abs(force) < 0.05) return '#10b981';
+function getElemColor(force) {
+    if (Math.abs(force) < 0.05) return '#10d48a';
     if (force > 0) {
-        // Tracción: Azul (de celeste a azul marino)
-        const t = Math.min(force / 15, 1); // Normalizar
-        const r = Math.round(59 + (20 - 59) * t);
-        const g = Math.round(130 + (40 - 130) * t);
-        const b = Math.round(246 + (150 - 246) * t);
-        return `rgb(${r}, ${g}, ${b})`;
+        const t = Math.min(force / 15, 1);
+        return `rgb(${Math.round(59+(20-59)*t)},${Math.round(130+(40-130)*t)},${Math.round(246+(150-246)*t)})`;
     } else {
-        // Compresión: Rojo
         const c = Math.min(Math.abs(force) / 15, 1);
-        const r = Math.round(239 + (150 - 239) * c);
-        const g = Math.round(68 + (20 - 68) * c);
-        const b = Math.round(68 + (20 - 68) * c);
-        return `rgb(${r}, ${g}, ${b})`;
+        return `rgb(${Math.round(239+(180-239)*c)},${Math.round(68+(20-68)*c)},${Math.round(68+(20-68)*c)})`;
     }
 }
 
-// --- CONSTRUIDOR 3D DE PUENTE ---
+// ── 3D BRIDGE BUILDER ─────────────────────────────────────────
 function buildBridge3D(nodes2D, elements2D) {
-    // Limpiar grupo de puente
-    while (bridgeGroup.children.length > 0) {
-        bridgeGroup.remove(bridgeGroup.children[0]);
-    }
-    
-    // Decouple Three.js geometry from scaleFactor (always 1.0) to keep the bridge large
-    const scaleFactor = 1.0; 
-    const zOffset = params.width / 2;
-    
-    // Centrar puente en la escena
-    const xOffset = params.length / 2;
-    
-    // Definir materiales según el modo
-    let barMaterialLeft, barMaterialRight, braceMaterial, nodeMaterial, deckMaterial;
-    let barRadius, nodeRadius, loadArrowScale;
-    
-    if (params.mode === 'scale' || params.mode === 'fea') {
-        // Modo Escala o FEA
-        const isFEA = (params.mode === 'fea');
-        
-        // Pasta color madera/tallarín
-        barMaterialLeft = new THREE.MeshPhongMaterial({
-            color: 0xefcf8d, 
-            roughness: 0.8,
-            shininess: 10
-        });
-        barMaterialRight = barMaterialLeft;
-        braceMaterial = barMaterialLeft;
-        
-        // Nudos (hilo + cola)
-        nodeMaterial = new THREE.MeshPhongMaterial({
-            color: 0x5c4a37,
-            roughness: 0.9,
-            shininess: 40
-        });
-        
-        // Tablero madera
-        deckMaterial = new THREE.MeshPhongMaterial({
-            color: 0xbc9d75,
-            transparent: true,
-            opacity: 0.6
-        });
-        
-        // Set realistic proportional thicknesses for scale model spaghetti bundle in prototype meters
-        barRadius = 0.075; 
-        nodeRadius = 0.14;
-        loadArrowScale = 1.0;
-        
+    while (bridgeGroup.children.length > 0) bridgeGroup.remove(bridgeGroup.children[0]);
+    waterMesh = null;
+    trafficActors = [];    // reset moving actors
+    barMeshRefs   = [];    // reset FEA bar refs
+
+    buildAnimItems = [];
+    buildAnimClock = 0;
+    buildAnimActive = true;
+    document.getElementById('build-indicator').style.display = 'flex';
+
+    const isFEA   = params.mode === 'fea';
+    const isScale = params.mode === 'scale';
+    const isReal  = params.mode === 'real';
+
+    const sc = ECUADOR_SCENARIOS[params.scenario] || ECUADOR_SCENARIOS.napo;
+    const isAmazon = sc.environment === 'amazon';
+
+    const xOff = params.length / 2;
+    const zOff = params.width  / 2;
+
+    // ── MATERIALS ──────────────────────────────────────────────
+    let barMat, nodeMat, deckMat, braceMat;
+
+    if (isScale) {
+        barMat = new THREE.MeshPhongMaterial({ color: 0xefcf8d, shininess: 12 });
+        nodeMat = new THREE.MeshPhongMaterial({ color: 0x5c4a37, shininess: 30 });
+        deckMat = new THREE.MeshPhongMaterial({ color: 0xbc9d75, transparent: true, opacity: 0.55 });
+        braceMat = barMat;
     } else {
-        // Modo Real 1:1 (Acero y Concreto)
-        barMaterialLeft = new THREE.MeshStandardMaterial({
-            color: 0x78909c,
-            metalness: 0.8,
-            roughness: 0.2
+        // Cinematic A36 steel — azul acero pintado anticorrosivo (típico Ecuador)
+        barMat = new THREE.MeshStandardMaterial({
+            color: 0x4a6fa5,
+            metalness: 0.88,
+            roughness: 0.12,
+            envMapIntensity: 1.1
         });
-        barMaterialRight = barMaterialLeft;
-        braceMaterial = barMaterialLeft;
-        
-        nodeMaterial = new THREE.MeshStandardMaterial({
-            color: 0x455a64,
-            metalness: 0.9,
-            roughness: 0.1
+        nodeMat = new THREE.MeshStandardMaterial({
+            color: 0x2a4070,
+            metalness: 0.95,
+            roughness: 0.08
         });
-        
-        deckMaterial = new THREE.MeshStandardMaterial({
-            color: 0x374151, // Asfalto
-            roughness: 0.9
+        deckMat = new THREE.MeshStandardMaterial({
+            color: 0x2d3748,
+            roughness: 0.88
         });
-        
-        barRadius = 0.08; // Tubos de acero gruesos en 1:1
-        nodeRadius = 0.15;
-        loadArrowScale = 1.0;
+        braceMat = new THREE.MeshStandardMaterial({
+            color: 0x3a5580,
+            metalness: 0.85,
+            roughness: 0.18
+        });
     }
-    
-    // Crear cilindro entre dos puntos
-    function createCylinderBetweenPoints(p1, p2, radius, material, customColorHex = null) {
-        const direction = new THREE.Vector3().subVectors(p2, p1);
-        const length = direction.length();
-        
-        const geometry = new THREE.CylinderGeometry(radius, radius, length, 8);
-        
-        let mat = material;
-        if (customColorHex) {
-            mat = new THREE.MeshPhongMaterial({
-                color: new THREE.Color(customColorHex),
-                shininess: 15
+
+    const barR  = isScale ? 0.075 : 0.085;
+    const nodeR = isScale ? 0.13  : 0.16;
+
+    // ── HELPER: animated cylinder between two points ───────────
+    function makeCylinder(p1, p2, radius, mat, colorHex, animDelay, elemIdx) {
+        const dir = new THREE.Vector3().subVectors(p2, p1);
+        const len = dir.length();
+        if (len < 0.001) return;
+
+        const geom = new THREE.CylinderGeometry(radius, radius, len, 8);
+
+        let m = mat;
+        if (colorHex && isFEA) {
+            const col = new THREE.Color(colorHex);
+            const emitCol = col.clone();
+            const isComp = colorHex.includes('rgb(') && parseInt(colorHex.split(',')[0].split('(')[1]) > 200;
+            const isTens = colorHex.includes('rgb(') && parseInt(colorHex.split(',')[2]) > 200;
+            m = new THREE.MeshStandardMaterial({
+                color: col,
+                metalness: 0.3,
+                roughness: 0.4,
+                emissive: emitCol,
+                emissiveIntensity: 0.15
             });
+            if (isComp || isTens) {
+                m.emissiveIntensity = 0.3;
+            }
         }
-        
-        const mesh = new THREE.Mesh(geometry, mat);
+
+        const mesh = new THREE.Mesh(geom, m);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
-        
-        // Alinear cilindro con la dirección de la barra
-        mesh.position.copy(new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5));
-        
+
+        const mid = new THREE.Vector3().addVectors(p1, p2).multiplyScalar(0.5);
+        mesh.position.copy(mid);
+
+        dir.normalize();
         const up = new THREE.Vector3(0, 1, 0);
-        direction.normalize();
-        
-        const quaternion = new THREE.Quaternion().setFromUnitVectors(up, direction);
-        mesh.setRotationFromQuaternion(quaternion);
-        
+        const q = new THREE.Quaternion().setFromUnitVectors(up, dir);
+        mesh.setRotationFromQuaternion(q);
+
+        // Build animation
+        const halfLen = len / 2;
+        mesh.scale.y = 0.001;
+        mesh.position.y = mid.y - halfLen + 0.0005;
+
+        // Tag structural bars for FEA color repaint (skip cross-members)
+        if (elemIdx !== undefined) {
+            mesh.userData.feaElemIdx = elemIdx;
+            barMeshRefs.push({ mesh, elemIdx });
+        }
+
+        buildAnimItems.push({ mesh, delay: animDelay, centerY: mid.y, halfLen, done: false });
         bridgeGroup.add(mesh);
+        return mesh;
     }
-    
-    // 1. Dibujar Cerchas Laterales (Izquierda: z = -zOffset, Derecha: z = zOffset)
-    const sides = [-zOffset, zOffset];
-    
-    sides.forEach((zVal, sideIndex) => {
-        // Nodos 3D
-        const nodes3D = nodes2D.map(n => new THREE.Vector3((n.x - xOffset) * scaleFactor, n.y * scaleFactor, zVal * scaleFactor));
-        
-        // Dibujar barras estructurales
-        elements2D.forEach(el => {
-            const pA = nodes3D[el.nodeA];
-            const pB = nodes3D[el.nodeB];
-            
-            let colorHex = null;
-            if (params.mode === 'fea') {
-                colorHex = getElementColorHex(el.force);
-            }
-            
-            createCylinderBetweenPoints(pA, pB, barRadius, barMaterialLeft, colorHex);
+
+    let animIdx = 0;
+
+    // ── LATERAL TRUSSES ────────────────────────────────────────
+    [-zOff, zOff].forEach(zVal => {
+        const n3D = nodes2D.map(nd => new THREE.Vector3(nd.x - xOff, nd.y, zVal));
+
+        elements2D.forEach((el, i) => {
+            const pA = n3D[el.nodeA], pB = n3D[el.nodeB];
+            const colorH = isFEA ? getElemColor(el.force) : null;
+            const delay = (animIdx++) * 0.045;
+            // elemIdx tags this bar for dynamic FEA repaint
+            makeCylinder(pA, pB, barR, barMat, colorH, delay, i);
         });
-        
-        // Dibujar esferas en las juntas (nudos)
-        nodes3D.forEach(nodePos => {
-            const sphereGeom = new THREE.SphereGeometry(nodeRadius, 16, 16);
-            const sphereMesh = new THREE.Mesh(sphereGeom, nodeMaterial);
-            sphereMesh.position.copy(nodePos);
-            sphereMesh.castShadow = true;
-            bridgeGroup.add(sphereMesh);
+
+        // Nodes (spheres)
+        n3D.forEach((pos, ni) => {
+            const geom = new THREE.SphereGeometry(nodeR, 14, 14);
+            const mesh = new THREE.Mesh(geom, nodeMat);
+            mesh.position.copy(pos);
+            mesh.castShadow = true;
+            // Animate as a group (instant appear after build is done approx)
+            mesh.scale.setScalar(0.001);
+            const delay = (animIdx++) * 0.03;
+            buildAnimItems.push({
+                mesh,
+                delay,
+                centerY: pos.y,
+                halfLen: nodeR,
+                done: false,
+                isSphere: true
+            });
+            bridgeGroup.add(mesh);
         });
     });
-    
-    // 2. Dibujar Travesaños e Interconexiones
+
+    // ── CROSS MEMBERS ──────────────────────────────────────────
     const Lp = params.length / params.panels;
-    
-    // Travesaños inferiores y superiores
     for (let i = 0; i <= params.panels; i++) {
-        const xVal = (i * Lp - xOffset) * scaleFactor;
-        
-        // Travesaño Inferior
-        const pInfL = new THREE.Vector3(xVal, 0, -zOffset * scaleFactor);
-        const pInfR = new THREE.Vector3(xVal, 0, zOffset * scaleFactor);
-        createCylinderBetweenPoints(pInfL, pInfR, barRadius, braceMaterial);
-        
-        // Travesaño Superior
-        const pSupL = new THREE.Vector3(xVal, params.height * scaleFactor, -zOffset * scaleFactor);
-        const pSupR = new THREE.Vector3(xVal, params.height * scaleFactor, zOffset * scaleFactor);
-        createCylinderBetweenPoints(pSupL, pSupR, barRadius, braceMaterial);
+        const xv = i * Lp - xOff;
+        const delay = (animIdx++) * 0.04;
+        // Bottom cross
+        makeCylinder(
+            new THREE.Vector3(xv, 0, -zOff),
+            new THREE.Vector3(xv, 0,  zOff),
+            barR, braceMat, null, delay
+        );
+        // Top cross
+        makeCylinder(
+            new THREE.Vector3(xv, params.height, -zOff),
+            new THREE.Vector3(xv, params.height,  zOff),
+            barR, braceMat, null, delay + 0.02
+        );
     }
-    
-    // Arriostramientos superiores (Bracing en X en el plano superior)
+
+    // Wind bracing X on top chord
     for (let i = 0; i < params.panels; i++) {
-        const x1 = (i * Lp - xOffset) * scaleFactor;
-        const x2 = ((i + 1) * Lp - xOffset) * scaleFactor;
-        const yVal = params.height * scaleFactor;
-        
-        // Diagonal 1: Izq_i -> Der_i+1
-        const p1 = new THREE.Vector3(x1, yVal, -zOffset * scaleFactor);
-        const p2 = new THREE.Vector3(x2, yVal, zOffset * scaleFactor);
-        createCylinderBetweenPoints(p1, p2, barRadius * 0.8, braceMaterial);
-        
-        // Diagonal 2: Der_i -> Izq_i+1
-        const p3 = new THREE.Vector3(x1, yVal, zOffset * scaleFactor);
-        const p4 = new THREE.Vector3(x2, yVal, -zOffset * scaleFactor);
-        createCylinderBetweenPoints(p3, p4, barRadius * 0.8, braceMaterial);
+        const x1 = i * Lp - xOff, x2 = (i+1) * Lp - xOff;
+        const yv = params.height;
+        const d2 = (animIdx++) * 0.04;
+        makeCylinder(new THREE.Vector3(x1,yv,-zOff), new THREE.Vector3(x2,yv, zOff), barR*0.75, braceMat, null, d2);
+        makeCylinder(new THREE.Vector3(x1,yv, zOff), new THREE.Vector3(x2,yv,-zOff), barR*0.75, braceMat, null, d2+0.015);
     }
-    
-    // 3. Dibujar Tablero (Deck)
-    const deckLength = params.length * scaleFactor;
-    const deckWidth = params.width * scaleFactor;
-    const deckThickness = 0.02 * scaleFactor;
-    
-    const deckGeom = new THREE.BoxGeometry(deckLength, deckThickness, deckWidth);
-    const deckMesh = new THREE.Mesh(deckGeom, deckMaterial);
-    deckMesh.position.set(0, -deckThickness / 2, 0);
+
+    // ── DECK ──────────────────────────────────────────────────
+    const deckGeom = new THREE.BoxGeometry(params.length, 0.04, params.width);
+    const deckMesh = new THREE.Mesh(deckGeom, deckMat);
+    deckMesh.position.set(0, -0.02, 0);
     deckMesh.receiveShadow = true;
     bridgeGroup.add(deckMesh);
-    
-    // 4. Dibujar Flecha de Carga (Modo FEA o normal, si P > 0)
-    if (params.load > 0 && params.mode !== 'node') {
-        const arrowLength = 1.2 * loadArrowScale;
-        const arrowDir = new THREE.Vector3(0, -1, 0);
-        const arrowOrigin = new THREE.Vector3(0, params.height * scaleFactor + arrowLength, 0); // Desde arriba
-        
-        // Si es FEA, flecha amarilla brillante. Si no, verde
-        const arrowColor = params.mode === 'fea' ? 0xffeb3b : 0x10b981;
-        const arrowHelper = new THREE.ArrowHelper(arrowDir, arrowOrigin, arrowLength, arrowColor, 0.4 * loadArrowScale, 0.25 * loadArrowScale);
-        
-        // Hacer la flecha más gruesa
-        arrowHelper.line.material.linewidth = 4;
-        bridgeGroup.add(arrowHelper);
+
+    // ── LOAD ARROW ────────────────────────────────────────────
+    if (params.load > 0) {
+        const arLen = 1.4;
+        const arOrigin = new THREE.Vector3(0, params.height + arLen, 0);
+        const arDir = new THREE.Vector3(0, -1, 0);
+        const arCol = isFEA ? 0xffeb3b : 0x10d48a;
+        const arrow = new THREE.ArrowHelper(arDir, arOrigin, arLen, arCol, 0.45, 0.28);
+        arrow.line.material.linewidth = 3;
+        bridgeGroup.add(arrow);
     }
-    
-    // 5. Dibujar Apoyos (Pilares) en Modo Real
-    if (params.mode === 'real') {
-        const pierMaterial = new THREE.MeshStandardMaterial({
-            color: 0x90a4ae, // Concreto gris
-            roughness: 0.9
-        });
-        
-        const pierGeom = new THREE.BoxGeometry(1.5, 4.0, params.width + 1.0);
-        
-        // Pilar izquierdo (Estribo)
-        const pierL = new THREE.Mesh(pierGeom, pierMaterial);
-        pierL.position.set(-xOffset - 0.5, -2.0, 0);
-        pierL.castShadow = true;
-        pierL.receiveShadow = true;
-        bridgeGroup.add(pierL);
-        
-        // Pilar derecho (Estribo)
-        const pierR = new THREE.Mesh(pierGeom, pierMaterial);
-        pierR.position.set(xOffset + 0.5, -2.0, 0);
-        pierR.castShadow = true;
-        pierR.receiveShadow = true;
-        bridgeGroup.add(pierR);
-        
-        // Pilares intermedios en el río (bajo cada nodo inferior interno de la celosía)
-        const intPierGeom = new THREE.BoxGeometry(0.6, 4.0, params.width - 0.5);
-        for (let i = 1; i < params.panels; i++) {
-            const xVal = -xOffset + i * Lp;
-            const intPier = new THREE.Mesh(intPierGeom, pierMaterial);
-            intPier.position.set(xVal, -2.0, 0);
-            intPier.castShadow = true;
-            intPier.receiveShadow = true;
-            bridgeGroup.add(intPier);
-        }
-        
-        // Añadir agua/río sutil abajo (el ancho del río es igual a la longitud del puente)
-        const waterGeom = new THREE.PlaneGeometry(params.length + 0.2, 80);
-        const waterMat = new THREE.MeshStandardMaterial({
-            color: 0x1d4ed8,
-            roughness: 0.1,
-            metalness: 0.1,
-            transparent: true,
-            opacity: 0.8
-        });
-        const water = new THREE.Mesh(waterGeom, waterMat);
-        water.rotation.x = -Math.PI / 2;
-        water.position.set(0, -3.9, 0);
-        bridgeGroup.add(water);
-        
-        // Orillas de tierra/pasto
-        const landGeom = new THREE.BoxGeometry(40, 5, 80);
-        const landMat = new THREE.MeshStandardMaterial({
-            color: 0x1b4332, // pasto verde
-            roughness: 0.9
-        });
-        
-        const landL = new THREE.Mesh(landGeom, landMat);
-        landL.position.set(-xOffset - 20, -5.5, 0);
-        bridgeGroup.add(landL);
-        
-        const landR = new THREE.Mesh(landGeom, landMat);
-        landR.position.set(xOffset + 20, -5.5, 0);
-        bridgeGroup.add(landR);
+
+    // ── REAL MODE ENVIRONMENT ──────────────────────────────────
+    if (isReal || isFEA) {
+        buildEnvironment(isAmazon, xOff, zOff);
     }
-    
-    // 6. Carreteras de inicio y fin, Vehículos y Peatones
-    if (params.mode === 'real' || params.mode === 'fea' || params.mode === 'scale') {
-        const isScale = (params.mode === 'scale');
-        
-        // Materiales para carretera y líneas
-        const roadMat = new THREE.MeshStandardMaterial({
-            color: isScale ? 0xbcaaa4 : 0x27272a, // Madera clara en escala, asfalto oscuro en real
-            roughness: 0.9
-        });
-        
-        const lineMat = new THREE.MeshBasicMaterial({
-            color: isScale ? 0x8d6e63 : 0xfacc15 // Madera oscura en escala, amarillo en real
-        });
-        
-        const skinMat = new THREE.MeshPhongMaterial({
-            color: isScale ? 0xd7ccc8 : 0xffdbac // Piel o madera clara
-        });
-        
-        // Dibujar Carreteras
-        const roadLength = 30;
-        const roadThickness = 0.04;
-        const roadGeom = new THREE.BoxGeometry(roadLength, roadThickness, params.width);
-        
-        // Carretera Izquierda
-        const roadL = new THREE.Mesh(roadGeom, roadMat);
-        roadL.position.set(-xOffset - roadLength/2, -roadThickness/2, 0);
-        roadL.receiveShadow = true;
-        bridgeGroup.add(roadL);
-        
-        // Carretera Derecha
-        const roadR = new THREE.Mesh(roadGeom, roadMat);
-        roadR.position.set(xOffset + roadLength/2, -roadThickness/2, 0);
-        roadR.receiveShadow = true;
-        bridgeGroup.add(roadR);
-        
-        // Línea central (carreteras + puente)
-        const totalRoadLength = params.length + 2 * roadLength;
-        const numDashes = Math.floor(totalRoadLength / 3);
-        for (let i = 0; i < numDashes; i++) {
-            const dashLength = 1.0;
-            const xPos = -totalRoadLength/2 + (i * 3) + 0.5;
-            const dashGeom = new THREE.BoxGeometry(dashLength, 0.005, 0.08);
-            const dash = new THREE.Mesh(dashGeom, lineMat);
-            dash.position.set(xPos, 0.005, 0);
-            bridgeGroup.add(dash);
+
+    // Fix sphere animations (scale uniformly)
+    buildAnimItems.forEach(item => {
+        if (item.isSphere) {
+            item.mesh.userData._sphere = true;
         }
-        
-        // Funciones para crear vehículos low-poly
-        function createVehicle(x, z, colorHex, type, heading) {
-            const vehicleGroup = new THREE.Group();
-            
-            const bodyColor = isScale ? 0xd7ccc8 : colorHex;
-            const glassColor = isScale ? 0x8d6e63 : 0x0f172a;
-            const wheelColor = isScale ? 0x5c4a37 : 0x18181b;
-            
-            const carMat = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.5 });
-            const windowMat = new THREE.MeshStandardMaterial({ color: glassColor, roughness: 0.2 });
-            const wheelMat = new THREE.MeshStandardMaterial({ color: wheelColor, roughness: 0.8 });
-            
-            if (type === 'car') {
-                // Carrocería
-                const bodyGeom = new THREE.BoxGeometry(1.8, 0.45, 0.9);
-                const body = new THREE.Mesh(bodyGeom, carMat);
-                body.position.y = 0.35;
-                body.castShadow = true;
-                vehicleGroup.add(body);
-                
-                // Cabina
-                const cabGeom = new THREE.BoxGeometry(0.9, 0.4, 0.8);
-                const cab = new THREE.Mesh(cabGeom, windowMat);
-                cab.position.set(-0.1, 0.7, 0);
-                cab.castShadow = true;
-                vehicleGroup.add(cab);
-                
-                // Ruedas (4)
-                const wheelGeom = new THREE.CylinderGeometry(0.2, 0.2, 0.12, 12);
-                const wheelPositions = [
-                    [-0.5, 0.2, -0.48], [-0.5, 0.2, 0.48],
-                    [0.5, 0.2, -0.48], [0.5, 0.2, 0.48]
-                ];
-                wheelPositions.forEach(pos => {
-                    const wheel = new THREE.Mesh(wheelGeom, wheelMat);
-                    wheel.position.set(pos[0], pos[1], pos[2]);
-                    wheel.rotation.x = Math.PI / 2;
-                    wheel.castShadow = true;
-                    vehicleGroup.add(wheel);
-                });
-            } else {
-                // Camión
-                // Chasis
-                const chGeom = new THREE.BoxGeometry(3.6, 0.2, 1.0);
-                const chassis = new THREE.Mesh(chGeom, wheelMat);
-                chassis.position.y = 0.3;
-                chassis.castShadow = true;
-                vehicleGroup.add(chassis);
-                
-                // Cabina
-                const cabGeom = new THREE.BoxGeometry(0.8, 0.9, 0.95);
-                const cab = new THREE.Mesh(cabGeom, carMat);
-                cab.position.set(1.1, 0.8, 0);
-                cab.castShadow = true;
-                vehicleGroup.add(cab);
-                
-                // Ventana parabrisas
-                const glassGeom = new THREE.BoxGeometry(0.2, 0.3, 0.85);
-                const glass = new THREE.Mesh(glassGeom, windowMat);
-                glass.position.set(1.41, 0.95, 0);
-                vehicleGroup.add(glass);
-                
-                // Contenedor trasero
-                const boxGeom = new THREE.BoxGeometry(2.4, 1.3, 1.0);
-                const boxMat = new THREE.MeshStandardMaterial({ color: isScale ? 0xbcaaa4 : 0xe2e8f0, roughness: 0.4 });
-                const box = new THREE.Mesh(boxGeom, boxMat);
-                box.position.set(-0.4, 1.05, 0);
-                box.castShadow = true;
-                vehicleGroup.add(box);
-                
-                // Ruedas (6)
-                const wheelGeom = new THREE.CylinderGeometry(0.28, 0.28, 0.16, 12);
-                const wheelPositions = [
-                    [1.0, 0.28, -0.55], [1.0, 0.28, 0.55],
-                    [-0.3, 0.28, -0.55], [-0.3, 0.28, 0.55],
-                    [-1.1, 0.28, -0.55], [-1.1, 0.28, 0.55]
-                ];
-                wheelPositions.forEach(pos => {
-                    const wheel = new THREE.Mesh(wheelGeom, wheelMat);
-                    wheel.position.set(pos[0], pos[1], pos[2]);
-                    wheel.rotation.x = Math.PI / 2;
-                    wheel.castShadow = true;
-                    vehicleGroup.add(wheel);
-                });
-            }
-            
-            // Posición final y orientación
-            vehicleGroup.position.set(x, 0, z);
-            vehicleGroup.rotation.y = heading;
-            bridgeGroup.add(vehicleGroup);
-        }
-        
-        // Crear peatón low-poly
-        function createPedestrian(x, z, shirtColorHex) {
-            const pGroup = new THREE.Group();
-            
-            const shirtMat = new THREE.MeshPhongMaterial({ color: isScale ? 0x8d6e63 : shirtColorHex });
-            const pantsMat = new THREE.MeshPhongMaterial({ color: isScale ? 0x5c4a37 : 0x1d4ed8 });
-            
-            // Cuerpo (Cilindro)
-            const bodyGeom = new THREE.CylinderGeometry(0.08, 0.08, 0.35, 8);
-            const body = new THREE.Mesh(bodyGeom, shirtMat);
-            body.position.y = 0.325;
-            body.castShadow = true;
-            pGroup.add(body);
-            
-            // Cabeza (Esfera)
-            const headGeom = new THREE.SphereGeometry(0.07, 8, 8);
-            const head = new THREE.Mesh(headGeom, skinMat);
-            head.position.y = 0.55;
-            head.castShadow = true;
-            pGroup.add(head);
-            
-            // Piernas (Cilindros pequeños)
-            const legGeom = new THREE.CylinderGeometry(0.02, 0.02, 0.15, 6);
-            const legL = new THREE.Mesh(legGeom, pantsMat);
-            legL.position.set(-0.03, 0.075, 0);
-            pGroup.add(legL);
-            
-            const legR = new THREE.Mesh(legGeom, pantsMat);
-            legR.position.set(0.03, 0.075, 0);
-            pGroup.add(legR);
-            
-            pGroup.position.set(x, 0, z);
-            bridgeGroup.add(pGroup);
-        }
-        
-        // Colocar vehículos en carriles alternos
-        // Carril derecho (z = params.width / 4, hacia la derecha heading = 0)
-        createVehicle(-xOffset - 8, params.width / 4, 0xef4444, 'car', 0); // Auto rojo en la carretera izq
-        createVehicle(xOffset / 3, params.width / 4, 0x3b82f6, 'car', 0);  // Auto azul en el puente
-        
-        // Carril izquierdo (z = -params.width / 4, hacia la izquierda heading = Math.PI)
-        createVehicle(xOffset + 12, -params.width / 4, 0x10b981, 'car', Math.PI); // Auto verde en la carretera der
-        createVehicle(-xOffset / 4, -params.width / 4, 0xf97316, 'truck', Math.PI); // Camión naranja en el puente
-        
-        // Colocar peatones en las aceras del puente (laterales z = -width/2 + 0.3 y z = width/2 - 0.3)
-        const sideZ1 = -params.width / 2 + 0.3;
-        const sideZ2 = params.width / 2 - 0.3;
-        
-        createPedestrian(-xOffset / 2, sideZ1, 0xec4899); // Persona rosa
-        createPedestrian(xOffset / 2, sideZ1, 0x06b6d4);  // Persona cian
-        createPedestrian(-xOffset / 5, sideZ2, 0x8b5cf6); // Persona morada
-        createPedestrian(xOffset / 4, sideZ2, 0xeab308);  // Persona amarilla
+    });
+}
+
+// ── ENVIRONMENT BUILDER ───────────────────────────────────────
+function buildEnvironment(isAmazon, xOff, zOff) {
+    const concrete = new THREE.MeshStandardMaterial({ color: 0x7b8fa1, roughness: 0.85 });
+    const asphalt  = new THREE.MeshStandardMaterial({ color: 0x1e2535, roughness: 0.9 });
+
+    // Abutments
+    const pierGeom = new THREE.BoxGeometry(1.6, 4.2, params.width + 1.2);
+    [-1, 1].forEach(side => {
+        const pier = new THREE.Mesh(pierGeom, concrete);
+        pier.position.set(side * (xOff + 0.7), -2.1, 0);
+        pier.castShadow = pier.receiveShadow = true;
+        bridgeGroup.add(pier);
+    });
+
+    // ── Water / River ──────────────────────────────────────────
+    const waterGeom = new THREE.PlaneGeometry(params.length + 0.5, 90);
+
+    // Procedural water canvas texture
+    const wCanvas = document.createElement('canvas');
+    wCanvas.width = 256; wCanvas.height = 64;
+    const wCtx = wCanvas.getContext('2d');
+    const grad = wCtx.createLinearGradient(0, 0, 256, 0);
+
+    if (isAmazon) {
+        grad.addColorStop(0,    '#0d3b52');
+        grad.addColorStop(0.3,  '#0e4f6b');
+        grad.addColorStop(0.7,  '#0a3a50');
+        grad.addColorStop(1,    '#0d3b52');
+    } else {
+        grad.addColorStop(0,    '#1a3a5c');
+        grad.addColorStop(0.5,  '#1e4d72');
+        grad.addColorStop(1,    '#1a3a5c');
+    }
+    wCtx.fillStyle = grad;
+    wCtx.fillRect(0, 0, 256, 64);
+    // Ripples
+    wCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+    wCtx.lineWidth = 1;
+    for (let i = 0; i < 8; i++) {
+        wCtx.beginPath();
+        wCtx.moveTo(0, i * 8 + 4);
+        wCtx.bezierCurveTo(64, i*8, 128, i*8+8, 192, i*8, 256, i*8+4);
+        wCtx.stroke();
+    }
+
+    const wTex = new THREE.CanvasTexture(wCanvas);
+    wTex.wrapS = THREE.RepeatWrapping;
+    wTex.repeat.set(4, 1);
+
+    const waterMat = new THREE.MeshStandardMaterial({
+        map: wTex,
+        metalness: 0.05,
+        roughness: 0.3,
+        transparent: true,
+        opacity: 0.88
+    });
+
+    waterMesh = new THREE.Mesh(waterGeom, waterMat);
+    waterMesh.rotation.x = -Math.PI / 2;
+    waterMesh.position.set(0, -4.1, 0);
+    bridgeGroup.add(waterMesh);
+
+    // ── Terrain / Banks ────────────────────────────────────────
+    const bankColor = isAmazon ? 0x1a3a2a : 0x2c3a1e;
+    const bankMat = new THREE.MeshStandardMaterial({ color: bankColor, roughness: 0.95 });
+    const bankGeom = new THREE.BoxGeometry(45, 6, 90);
+
+    [-1, 1].forEach(side => {
+        const bank = new THREE.Mesh(bankGeom, bankMat);
+        bank.position.set(side * (xOff + 22.5), -6, 0);
+        bank.receiveShadow = true;
+        bridgeGroup.add(bank);
+    });
+
+    // ── Roads ─────────────────────────────────────────────────
+    const roadLen = 35;
+    const roadGeom = new THREE.BoxGeometry(roadLen, 0.06, params.width);
+    [-1, 1].forEach(side => {
+        const road = new THREE.Mesh(roadGeom, asphalt);
+        road.position.set(side * (xOff + roadLen/2), -0.03, 0);
+        road.receiveShadow = true;
+        bridgeGroup.add(road);
+    });
+
+    // Road markings
+    const markMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+    const totalLen = params.length + roadLen * 2;
+    for (let i = 0; i < Math.floor(totalLen / 3); i++) {
+        const dashG = new THREE.BoxGeometry(0.9, 0.005, 0.1);
+        const dash = new THREE.Mesh(dashG, markMat);
+        dash.position.set(-totalLen/2 + i * 3 + 0.45, 0.008, 0);
+        bridgeGroup.add(dash);
+    }
+
+    // ── Vegetation ────────────────────────────────────────────
+    if (isAmazon) {
+        buildAmazonVegetation(xOff);
+    } else {
+        buildAndeanVegetation(xOff);
+    }
+
+    // ── Vehicles / Pedestrians ────────────────────────────────
+    buildTraffic(xOff, zOff, false);
+}
+
+// ── VEGETATION ────────────────────────────────────────────────
+function buildAmazonVegetation(xOff) {
+    const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 });
+    const treeLeafMat  = new THREE.MeshStandardMaterial({ color: 0x1a5c2a, roughness: 0.8 });
+    const leafMat2     = new THREE.MeshStandardMaterial({ color: 0x236b30, roughness: 0.8 });
+
+    const positions = [
+        [-xOff-8,  0, -15], [-xOff-14, 0, -8], [-xOff-18, 0, 10], [-xOff-10, 0, 18],
+        [-xOff-22, 0, -18], [-xOff-6,  0, -22],
+        [ xOff+8,  0, -15], [ xOff+14, 0, -8], [ xOff+18, 0, 10], [ xOff+10, 0, 18],
+        [ xOff+22, 0, -20], [ xOff+6,  0, -25]
+    ];
+
+    positions.forEach(([x, y, z], idx) => {
+        const h = 7 + Math.sin(idx * 1.7) * 4;
+        const trunk = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.18, 0.28, h, 7),
+            treeTrunkMat
+        );
+        trunk.position.set(x, y + h/2 - 4.5, z);
+        trunk.castShadow = true;
+        bridgeGroup.add(trunk);
+
+        // Canopy — 2 layers
+        const lm = idx % 2 === 0 ? treeLeafMat : leafMat2;
+        [0, 1].forEach(layer => {
+            const cr = 2.5 - layer * 0.8;
+            const ch = 3.5 - layer * 1.2;
+            const canopy = new THREE.Mesh(
+                new THREE.ConeGeometry(cr, ch, 7),
+                lm
+            );
+            canopy.position.set(x, y + h - 2.5 - layer * 1.8, z);
+            canopy.castShadow = true;
+            bridgeGroup.add(canopy);
+        });
+    });
+}
+
+function buildAndeanVegetation(xOff) {
+    const treeTrunkMat = new THREE.MeshStandardMaterial({ color: 0x5c4033, roughness: 0.9 });
+    const treeLeafMat  = new THREE.MeshStandardMaterial({ color: 0x2e4a1e, roughness: 0.8 });
+    const bushMat      = new THREE.MeshStandardMaterial({ color: 0x3d5e28, roughness: 0.9 });
+
+    [[-xOff-6, 0, -12], [-xOff-12, 0, 8], [xOff+6, 0, -12], [xOff+12, 0, 8]].forEach(([x,y,z]) => {
+        const h = 4 + Math.random() * 2;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, h, 6), treeTrunkMat);
+        trunk.position.set(x, y+h/2-4.5, z);
+        trunk.castShadow = true;
+        bridgeGroup.add(trunk);
+
+        const canopy = new THREE.Mesh(new THREE.SphereGeometry(1.8, 7, 6), treeLeafMat);
+        canopy.scale.y = 1.3;
+        canopy.position.set(x, y+h-2, z);
+        canopy.castShadow = true;
+        bridgeGroup.add(canopy);
+    });
+
+    // Bushes
+    for (let i = 0; i < 8; i++) {
+        const bx = (i < 4 ? -xOff-5 : xOff+5) + (i%4) * -4;
+        const bz = (Math.random() - 0.5) * 20;
+        const bush = new THREE.Mesh(new THREE.SphereGeometry(0.8 + Math.random()*0.4, 7, 5), bushMat);
+        bush.scale.y = 0.7;
+        bush.position.set(bx, -3.8, bz);
+        bush.castShadow = true;
+        bridgeGroup.add(bush);
     }
 }
 
-// --- CONSTRUIDOR 3D DE DETALLE DE NUDO ---
-function buildNodeDetail() {
-    // Limpiar grupo de nudo
-    while (nodeDetailGroup.children.length > 0) {
-        nodeDetailGroup.remove(nodeDetailGroup.children[0]);
+// ── TRAFFIC: MOVING ACTORS ────────────────────────────────────
+function buildTraffic(xOff, zOff) {
+    trafficActors = [];
+    const TOTAL_PATH = 2 * ROAD_LEN + params.length;
+    const startX     = -xOff - ROAD_LEN;
+
+    // ── Wheel helper ──────────────────────────────────────────────
+    function mkWheel(radius, mat) {
+        const w = new THREE.Mesh(
+            new THREE.CylinderGeometry(radius, radius, radius * 0.85, 12), mat
+        );
+        w.rotation.x = Math.PI / 2;
+        return w;
     }
-    
-    // Configuración del Detalle de Nudo
-    // Visualizaremos una junta central inferior donde concurren:
-    // - 2 barras de cuerda inferior (horizontales, izquierda y derecha)
-    // - 1 barra vertical (hacia arriba)
-    // - 2 diagonales (hacia arriba-izquierda y arriba-derecha)
-    
-    // Materiales del Nudo Detallado
-    const spaghettiMaterial = new THREE.MeshPhongMaterial({
-        color: 0xf3d99e, // Pasta clara
-        roughness: 0.7,
-        shininess: 12
+
+    // ── Car builder ───────────────────────────────────────────────
+    function mkCar(col) {
+        const g  = new THREE.Group();
+        const bm = new THREE.MeshStandardMaterial({ color: col, roughness: 0.35, metalness: 0.22 });
+        const gm = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.18, metalness: 0.55 });
+        const wm = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.85 });
+        const lm = new THREE.MeshStandardMaterial({ color: 0xfef9c3, emissive: new THREE.Color(0xfef9c3), emissiveIntensity: 0.7 });
+        const rm = new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: new THREE.Color(0xef4444), emissiveIntensity: 0.55 });
+
+        const body  = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.48, 0.92), bm); body.position.y = 0.36;  g.add(body);
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.42, 0.85), gm); cabin.position.set(-0.08, 0.72, 0); g.add(cabin);
+        // Front lights
+        [[0.93,0.42, 0.22],[0.93,0.42,-0.22]].forEach(([x,y,z]) => {
+            const h = new THREE.Mesh(new THREE.BoxGeometry(0.07,0.12,0.2), lm); h.position.set(x,y,z); g.add(h);
+        });
+        // Rear lights
+        [[-0.93,0.42, 0.22],[-0.93,0.42,-0.22]].forEach(([x,y,z]) => {
+            const r = new THREE.Mesh(new THREE.BoxGeometry(0.06,0.1,0.18), rm); r.position.set(x,y,z); g.add(r);
+        });
+
+        const wheels = [];
+        [[ 0.58,0.2, 0.5],[ 0.58,0.2,-0.5],[-0.55,0.2, 0.5],[-0.55,0.2,-0.5]].forEach(([wx,wy,wz]) => {
+            const w = mkWheel(0.2, wm); w.position.set(wx,wy,wz); g.add(w); wheels.push(w);
+        });
+        g.traverse(c => { if (c.isMesh) c.castShadow = true; });
+        return { group: g, wheels, legs: [] };
+    }
+
+    // ── Truck builder ─────────────────────────────────────────────
+    function mkTruck(col) {
+        const g  = new THREE.Group();
+        const bm = new THREE.MeshStandardMaterial({ color: col, roughness: 0.45 });
+        const wm = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.85 });
+        const tm = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5, metalness: 0.3 });
+        const lm = new THREE.MeshStandardMaterial({ color: 0xfef9c3, emissive: new THREE.Color(0xfef9c3), emissiveIntensity: 0.8 });
+
+        const chassis = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.22, 1.05), tm); chassis.position.y = 0.37; g.add(chassis);
+        const cab     = new THREE.Mesh(new THREE.BoxGeometry(1.05,1.05,1.02), bm); cab.position.set(1.65, 0.9, 0); g.add(cab);
+        const trailer = new THREE.Mesh(new THREE.BoxGeometry(2.9,1.5,1.02), tm);  trailer.position.set(-0.55, 1.1, 0); g.add(trailer);
+        const pipe    = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,1.0,8), wm); pipe.position.set(1.1,1.42,0.56); g.add(pipe);
+        // Cab headlights
+        [[2.1,0.75, 0.3],[2.1,0.75,-0.3]].forEach(([x,y,z]) => {
+            const h = new THREE.Mesh(new THREE.BoxGeometry(0.07,0.14,0.24), lm); h.position.set(x,y,z); g.add(h);
+        });
+
+        const wheels = [];
+        [[ 1.4,0.32, 0.58],[ 1.4,0.32,-0.58],
+         [ 0.5,0.32, 0.58],[ 0.5,0.32,-0.58],
+         [-0.5,0.32, 0.58],[-0.5,0.32,-0.58],
+         [-1.4,0.32, 0.58],[-1.4,0.32,-0.58]].forEach(([wx,wy,wz]) => {
+            const w = mkWheel(0.3, wm); w.position.set(wx,wy,wz); g.add(w); wheels.push(w);
+        });
+        g.traverse(c => { if (c.isMesh) c.castShadow = true; });
+        return { group: g, wheels, legs: [] };
+    }
+
+    // ── Pedestrian builder ────────────────────────────────────────
+    function mkPed(shirtCol) {
+        const g  = new THREE.Group();
+        const bm = new THREE.MeshStandardMaterial({ color: shirtCol, roughness: 0.8 });
+        const jm = new THREE.MeshStandardMaterial({ color: 0x1e3a8a, roughness: 0.8 });
+        const hm = new THREE.MeshStandardMaterial({ color: 0xffdbac, roughness: 0.7 });
+        const sm = new THREE.MeshStandardMaterial({ color: 0x292524, roughness: 0.9 });
+
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.32,0.14), bm); torso.position.y = 0.72; g.add(torso);
+        const head  = new THREE.Mesh(new THREE.SphereGeometry(0.1,8,8),       hm); head.position.y  = 1.0;  g.add(head);
+        // Arms (static)
+        [-1,1].forEach(s => {
+            const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08,0.28,0.08), bm);
+            arm.position.set(s*0.17, 0.7, 0); arm.rotation.z = s*0.18; g.add(arm);
+        });
+
+        // Leg pivots (animated)
+        const legs = [];
+        const legLen = 0.34;
+        [-1,1].forEach(s => {
+            const pivot = new THREE.Group(); pivot.position.set(s*0.07, 0.58, 0);
+            const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.09,legLen,0.1), jm);
+            thigh.position.y = -legLen/2; pivot.add(thigh);
+            const shoe  = new THREE.Mesh(new THREE.BoxGeometry(0.1,0.07,0.18), sm);
+            shoe.position.set(0, -legLen-0.035, 0.04); pivot.add(shoe);
+            g.add(pivot); legs.push(pivot);
+        });
+        g.traverse(c => { if (c.isMesh) c.castShadow = true; });
+        return { group: g, wheels: [], legs };
+    }
+
+    // ── Register and spawn actor ──────────────────────────────────
+    function spawnActor(meshResult, type, speed, zLane, dir, startT) {
+        const { group, wheels, legs } = meshResult;
+        const actor = { group, type, speed, zLane, dir, t: startT, TOTAL_PATH, startX, xOff, wheels, legs };
+        const rawX = startX + startT * TOTAL_PATH;
+        group.position.set(dir > 0 ? rawX : -rawX, 0, zLane);
+        group.rotation.y = dir > 0 ? 0 : Math.PI;
+        trafficActors.push(actor);
+        bridgeGroup.add(group);
+    }
+
+    const laneR   =  params.width / 4;
+    const laneL   = -params.width / 4;
+    const sidePed =  zOff - 0.38;
+
+    // Vehicles
+    spawnActor(mkCar(0xef4444),   'car',   13, laneR,  +1, 0.05);
+    spawnActor(mkCar(0x3b82f6),   'car',    9, laneR,  +1, 0.55);
+    spawnActor(mkCar(0x10d48a),   'car',   11, laneL,  -1, 0.30);
+    spawnActor(mkTruck(0xf97316), 'truck',  7, laneL,  -1, 0.75);
+
+    // Pedestrians
+    spawnActor(mkPed(0xec4899), 'ped', 1.35,  sidePed, +1, 0.15);
+    spawnActor(mkPed(0x8b5cf6), 'ped', 1.20,  sidePed, +1, 0.68);
+    spawnActor(mkPed(0x06b6d4), 'ped', 1.40, -sidePed, -1, 0.42);
+    spawnActor(mkPed(0xeab308), 'ped', 1.10, -sidePed, -1, 0.87);
+}
+
+// ── MAIN ANIMATION LOOP ───────────────────────────────────────
+function animate(timestamp = 0) {
+    requestAnimationFrame(animate);
+
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
+    lastTime = timestamp;
+
+    // ── 1. Orbital spotlight ──────────────────────────────────────
+    spotLightAngle += dt * 0.4;
+    if (spotLight) {
+        const r = Math.max(params.length * 0.7, 12);
+        spotLight.position.x = Math.cos(spotLightAngle) * r;
+        spotLight.position.z = Math.sin(spotLightAngle) * r;
+        spotLight.position.y = 8 + Math.sin(spotLightAngle * 0.5) * 3;
+    }
+
+    // ── 2. Animated river ─────────────────────────────────────────
+    if (waterMesh && waterMesh.material.map) {
+        waterMesh.material.map.offset.x += dt * 0.15;
+        waterMesh.material.map.needsUpdate = true;
+    }
+
+    // ── 3. Bridge construction animation ─────────────────────────
+    if (buildAnimActive) {
+        buildAnimClock += dt;
+        let allDone = true;
+        buildAnimItems.forEach(item => {
+            if (item.done) return;
+            const elapsed = buildAnimClock - item.delay;
+            if (elapsed < 0) { allDone = false; return; }
+            const progress = Math.min(elapsed / 0.45, 1);
+            const eased = easeOutBack(progress);
+            if (item.isSphere) {
+                item.mesh.scale.setScalar(Math.max(eased, 0.001));
+            } else {
+                item.mesh.scale.y = Math.max(eased, 0.001);
+                item.mesh.position.y = item.centerY + (eased - 1) * item.halfLen;
+            }
+            if (progress >= 1) item.done = true;
+            else allDone = false;
+        });
+        if (allDone) {
+            buildAnimActive = false;
+            document.getElementById('build-indicator').style.display = 'none';
+        }
+    }
+
+    // ── 4. Moving traffic actors ──────────────────────────────────
+    trafficActors.forEach(actor => {
+        actor.t += dt * actor.speed / actor.TOTAL_PATH;
+        if (actor.t > 1) actor.t -= 1;   // loop seamlessly
+
+        // World X position
+        const rawX = actor.startX + actor.t * actor.TOTAL_PATH;
+        const worldX = actor.dir > 0 ? rawX : -rawX;
+        actor.group.position.x = worldX;
+
+        // Wheel rotation (radian per meter driven)
+        const wheelRadius = actor.type === 'truck' ? 0.3 : 0.2;
+        const dRot = (dt * actor.speed) / wheelRadius;
+        actor.wheels.forEach(w => { w.rotation.z -= dRot; });
+
+        // Pedestrian leg swing (walking cycle)
+        if (actor.type === 'ped' && actor.legs.length >= 2) {
+            const freq = actor.speed * 2.5;  // ~2.5 steps/m
+            const phase = actor.t * actor.TOTAL_PATH * freq * Math.PI * 2;
+            actor.legs[0].rotation.x =  Math.sin(phase) * 0.45;
+            actor.legs[1].rotation.x = -Math.sin(phase) * 0.45;
+            // Slight body bob
+            actor.group.position.y = Math.abs(Math.sin(phase)) * 0.03;
+        }
     });
-    
-    const threadMaterial = new THREE.MeshPhongMaterial({
-        color: 0x7a6955, // Hilo marrón de yute/costal
-        roughness: 0.95,
-        shininess: 5
-    });
-    
-    const glueMaterial = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        roughness: 0.1,
-        metalness: 0.1,
-        transparent: true,
-        opacity: 0.75, // Pegamento UHU translúcido seco
-        refractionRatio: 0.98
-    });
-    
-    // 1. Dibujar barras individuales del tallarín Don Vittorio
-    // En lugar de cilindros sólidos, simularemos que están compuestos por múltiples tallarines planos individuales!
-    // Un tallarín individual mide ~0.3cm x 0.1cm x largo. Renderizaremos pequeñas tiras juntas!
-    // Para simplificar y hacerlo ultra-estético, crearemos barras rectangulares detalladas con estrías
-    
-    const barW = 0.5; // Ancho del paquete de tallarines
-    const barH = 0.25; // Espesor del paquete
-    
-    function createSpaghettiBundle(length, rotationZ, position) {
-        const group = new THREE.Group();
-        
-        // Simular 5 capas de tallarines apilados
-        const numTallarinesX = 4;
-        const numTallarinesY = 3;
-        const tW = barW / numTallarinesX;
-        const tH = barH / numTallarinesY;
-        
-        for (let ix = 0; ix < numTallarinesX; ix++) {
-            for (let iy = 0; iy < numTallarinesY; iy++) {
-                const geom = new THREE.BoxGeometry(length, tH * 0.9, tW * 0.9);
-                const mesh = new THREE.Mesh(geom, spaghettiMaterial);
-                mesh.position.set(
-                    length / 2, 
-                    (iy - numTallarinesY/2 + 0.5) * tH, 
-                    (ix - numTallarinesX/2 + 0.5) * tW
-                );
-                mesh.castShadow = true;
-                mesh.receiveShadow = true;
-                group.add(mesh);
+
+    // ── 5. Dynamic FEA — throttled repaint as truck crosses ───────
+    if (params.mode === 'fea' && trafficActors.length > 0) {
+        dynamicFEATimer += dt;
+        if (dynamicFEATimer >= DYNAMIC_FEA_INTERVAL) {
+            dynamicFEATimer = 0;
+            // Find the truck (heaviest load) — use first truck found
+            const truck = trafficActors.find(a => a.type === 'truck');
+            if (truck) {
+                const xOff = params.length / 2;
+                // truck position in bridge-local coordinates: -xOff..+xOff
+                const bridgeX = truck.group.position.x;
+                const isOnBridge = bridgeX > -xOff && bridgeX < xOff;
+                if (isOnBridge) {
+                    const xNorm = (bridgeX + xOff) / params.length;  // 0..1
+                    updateDynamicFEA(xNorm);
+                }
+                // Show/hide HUD
+                const hud = document.getElementById('dynamic-load-hud');
+                if (hud) hud.style.display = isOnBridge ? 'block' : 'none';
             }
         }
-        
-        // Posicionar y rotar el grupo completo
-        group.position.copy(position);
-        group.rotation.z = rotationZ;
-        nodeDetailGroup.add(group);
+    } else if (params.mode !== 'fea') {
+        // Hide HUD outside FEA mode
+        const hud = document.getElementById('dynamic-load-hud');
+        if (hud) hud.style.display = 'none';
     }
-    
-    // Cuerda inferior izquierda
-    createSpaghettiBundle(3.0, 0, new THREE.Vector3(-3.0, 0, 0));
-    // Cuerda inferior derecha
-    createSpaghettiBundle(3.0, Math.PI, new THREE.Vector3(3.0, 0, 0));
-    // Barra vertical
-    createSpaghettiBundle(2.5, Math.PI / 2, new THREE.Vector3(0, 0, 0));
-    
-    // Diagonales (38.66 grados aprox)
-    const angle = 38.66 * (Math.PI / 180);
-    createSpaghettiBundle(3.0, angle, new THREE.Vector3(0, 0, 0));
-    createSpaghettiBundle(3.0, Math.PI - angle, new THREE.Vector3(0, 0, 0));
-    
-    // 2. Dibujar el Amarre de Hilo (Thread Wrap)
-    // El hilo envuelve la intersección de los fideos.
-    // Creamos varios aros torus superpuestos en la intersección central para simular el embobinado del hilo
-    const numWraps = 15;
-    for (let i = 0; i < numWraps; i++) {
-        const radius = 0.35 + Math.random() * 0.05;
-        const tubeRadius = 0.03;
-        const torusGeom = new THREE.TorusGeometry(radius, tubeRadius, 8, 24);
-        const torus = new THREE.Mesh(torusGeom, threadMaterial);
-        
-        torus.position.set(
-            (Math.random() - 0.5) * 0.3,
-            (Math.random() - 0.5) * 0.3,
-            (Math.random() - 0.5) * 0.3
-        );
-        torus.rotation.set(
-            Math.random() * Math.PI,
-            Math.random() * Math.PI,
-            Math.random() * Math.PI
-        );
-        torus.castShadow = true;
-        nodeDetailGroup.add(torus);
+
+    // ── 6. FEA breathing effect (for non-dynamic mode) ───────────
+    if (params.mode === 'fea' && trafficActors.length === 0) {
+        const breathVal = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(timestamp * 0.003));
+        bridgeGroup.children.forEach(child => {
+            if (child.isMesh && child.material?.emissive && child.material.emissiveIntensity > 0.05) {
+                child.material.emissiveIntensity = 0.15 + breathVal * 0.35;
+            }
+        });
     }
-    
-    // 3. Simular Pegamento UHU Seco
-    // Creamos burbujas/gotas sutiles translúcidas sobre el amarre de hilo
-    const glueGeom = new THREE.SphereGeometry(0.5, 16, 16);
-    const glueMesh = new THREE.Mesh(glueGeom, glueMaterial);
-    glueMesh.position.set(0, 0, 0);
-    nodeDetailGroup.add(glueMesh);
-    
-    // Gotitas adicionales
+
+    // ── 7. Cinematic camera tour ──────────────────────────────────
+    if (cinematic.active) {
+        cinematic.t += dt / cinematic.duration;
+        if (cinematic.t >= 1) cinematic.t = 0;
+        const angle = cinematic.t * Math.PI * 2;
+        const r = cinematic.radius;
+        const baseH = controls.target.y;
+        const height = baseH + Math.sin(cinematic.t * Math.PI * 2) * params.height * 1.2 + params.height * 0.6;
+        camera.position.set(
+            controls.target.x + Math.cos(angle) * r,
+            height,
+            controls.target.z + Math.sin(angle) * r
+        );
+        camera.lookAt(controls.target);
+        const bar = document.getElementById('tour-progress-bar');
+        if (bar) bar.style.setProperty('--progress', (cinematic.t * 100).toFixed(1) + '%');
+    }
+
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+// ── DYNAMIC FEA — Moving Load Analysis ───────────────────────
+// Recalculates FEA with a point load at xNorm (0..1 from left support)
+// and repaints bar materials without rebuilding the scene.
+function updateDynamicFEA(xNorm) {
+    const n      = params.panels;
+    const Lp     = params.length / n;
+    const h      = params.height;
+    const numNodes = (n + 1) * 2;
+
+    // Build node array
+    const nodes2D = [];
+    for (let i = 0; i <= n; i++) nodes2D.push({ x: i*Lp, y: 0, fx:0, fy:0, rx: i===0, ry: i===0||i===n });
+    for (let i = 0; i <= n; i++) nodes2D.push({ x: i*Lp, y: h, fx:0, fy:0, rx:false, ry:false });
+
+    // Place truck load at nearest bottom node to xNorm
+    const truckX  = xNorm * params.length;
+    const nodeIdx = Math.round(truckX / Lp);
+    const clampedIdx = Math.max(0, Math.min(n, nodeIdx));
+    // Equivalent point load from truck: roughly 120 kN truck weight, scaled to model
+    const truckLoad = Math.max(params.load * 6, 30);   // 6× static live load
+    nodes2D[clampedIdx].fy -= truckLoad;
+
+    // Own-weight distribution (same as runFEA)
+    const wNode = params.load * 0.2 / (n + 1);
+    for (let i = 0; i <= n; i++) nodes2D[i].fy -= wNode;
+
+    // Build elements (same topology as bridge)
+    const E = 2.0e9, A = 15 * Math.PI * Math.pow(0.0008, 2);
+    const elements2D = [];
+    for (let i = 0; i < n; i++) elements2D.push({ nodeA:i, nodeB:i+1, E, A, type:'bottom' });
+    for (let i = 0; i < n; i++) elements2D.push({ nodeA:n+1+i, nodeB:n+2+i, E, A, type:'top' });
+    for (let i = 0; i <= n; i++) elements2D.push({ nodeA:i, nodeB:n+1+i, E, A, type:'vertical' });
+    for (let i = 0; i < n; i++) {
+        if (i%2===0) elements2D.push({ nodeA:i, nodeB:n+2+i, E, A, type:'diagonal' });
+        else         elements2D.push({ nodeA:n+1+i, nodeB:i+1, E, A, type:'diagonal' });
+    }
+
+    solveDirectStiffness2D(nodes2D, elements2D);
+
+    // Repaint bar meshes without rebuild
+    repaintBarsFEA(elements2D);
+
+    // Update reactions for HUD
+    const RA = (truckLoad * (params.length - truckX) / params.length).toFixed(1);
+    const RB = (truckLoad * truckX / params.length).toFixed(1);
+    const speed = trafficActors.find(a => a.type === 'truck')?.speed ?? 0;
+    const DAF  = (1 + (speed * speed) / (9.81 * params.length)).toFixed(3);
+    const Pef  = (truckLoad * parseFloat(DAF)).toFixed(1);
+
+    updateDynamicHUD(xNorm, RA, RB, DAF, Pef, truckLoad);
+}
+
+// Repaint existing bar meshes with new force colors (no scene rebuild)
+function repaintBarsFEA(elements2D) {
+    barMeshRefs.forEach(ref => {
+        if (ref.elemIdx >= elements2D.length) return;
+        const force = elements2D[ref.elemIdx].force;
+        const col   = new THREE.Color(getElemColor(force));
+        if (ref.mesh.material && ref.mesh.material.isMaterial) {
+            ref.mesh.material.color.copy(col);
+            if (ref.mesh.material.emissive) {
+                ref.mesh.material.emissive.copy(col.clone().multiplyScalar(0.6));
+                // Pulse: stronger emissive for critical bars
+                const crit = Math.abs(force) > 5;
+                ref.mesh.material.emissiveIntensity = crit ? 0.55 : 0.15;
+            }
+            ref.mesh.material.needsUpdate = true;
+        }
+    });
+}
+
+// Update the dynamic HUD widget in the overlay
+function updateDynamicHUD(xNorm, RA, RB, DAF, Pef, P) {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    const setW = (id, w) => { const el = document.getElementById(id); if (el) el.style.width = w; };
+
+    set('dlh-ra-val', RA + ' N');
+    set('dlh-rb-val', RB + ' N');
+    set('dlh-daf-val', DAF);
+    set('dlh-pef-val', Pef);
+
+    // Fill bars proportional to max
+    const maxR = parseFloat(P);
+    setW('dlh-ra-fill', (Math.min(parseFloat(RA)/maxR, 1)*100).toFixed(0) + '%');
+    setW('dlh-rb-fill', (Math.min(parseFloat(RB)/maxR, 1)*100).toFixed(0) + '%');
+
+    // Truck position marker
+    const marker = document.getElementById('dlh-truck-marker');
+    if (marker) marker.style.left = (xNorm * 100).toFixed(1) + '%';
+}
+
+
+
+// ── NODE DETAIL ───────────────────────────────────────────────
+function buildNodeDetail() {
+    while (nodeDetailGroup.children.length > 0) nodeDetailGroup.remove(nodeDetailGroup.children[0]);
+
+    const spMat = new THREE.MeshPhongMaterial({ color: 0xf3d99e, shininess: 14 });
+    const thMat = new THREE.MeshPhongMaterial({ color: 0x7a6955, shininess: 5 });
+    const glMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff, roughness: 0.1, metalness: 0.1,
+        transparent: true, opacity: 0.72
+    });
+
+    const bW = 0.5, bH = 0.25;
+
+    function makeBundle(length, rotZ, pos) {
+        const g = new THREE.Group();
+        const nX = 4, nY = 3;
+        const tW = bW/nX, tH = bH/nY;
+        for (let ix = 0; ix < nX; ix++) {
+            for (let iy = 0; iy < nY; iy++) {
+                const m = new THREE.Mesh(new THREE.BoxGeometry(length, tH*0.88, tW*0.88), spMat);
+                m.position.set(length/2, (iy-nY/2+0.5)*tH, (ix-nX/2+0.5)*tW);
+                m.castShadow = true;
+                g.add(m);
+            }
+        }
+        g.position.copy(pos);
+        g.rotation.z = rotZ;
+        nodeDetailGroup.add(g);
+    }
+
+    makeBundle(3.0, 0, new THREE.Vector3(-3,0,0));
+    makeBundle(3.0, Math.PI, new THREE.Vector3(3,0,0));
+    makeBundle(2.5, Math.PI/2, new THREE.Vector3(0,0,0));
+    const ang = 38.66 * Math.PI / 180;
+    makeBundle(3.0, ang, new THREE.Vector3(0,0,0));
+    makeBundle(3.0, Math.PI-ang, new THREE.Vector3(0,0,0));
+
+    for (let i = 0; i < 14; i++) {
+        const tor = new THREE.Mesh(
+            new THREE.TorusGeometry(0.33 + Math.random()*0.06, 0.03, 8, 22),
+            thMat
+        );
+        tor.position.set((Math.random()-0.5)*0.3,(Math.random()-0.5)*0.3,(Math.random()-0.5)*0.3);
+        tor.rotation.set(Math.random()*Math.PI, Math.random()*Math.PI, Math.random()*Math.PI);
+        tor.castShadow = true;
+        nodeDetailGroup.add(tor);
+    }
+
+    nodeDetailGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.48,14,14), glMat));
     for (let i = 0; i < 4; i++) {
-        const smallGlueGeom = new THREE.SphereGeometry(0.12, 8, 8);
-        const drop = new THREE.Mesh(smallGlueGeom, glueMaterial);
-        drop.position.set(
-            (Math.random() - 0.5) * 0.8,
-            (Math.random() - 0.5) * 0.8,
-            (Math.random() - 0.5) * 0.4
-        );
+        const drop = new THREE.Mesh(new THREE.SphereGeometry(0.11,8,8), glMat);
+        drop.position.set((Math.random()-0.5)*0.8,(Math.random()-0.5)*0.8,(Math.random()-0.5)*0.4);
         nodeDetailGroup.add(drop);
     }
-    
-    // Reposicionar cámara para una buena vista de cerca del nudo
-    camera.position.set(0, 1.5, 4.0);
+
+    camera.position.set(0, 1.6, 4.2);
     controls.target.set(0, 0.5, 0);
 }
 
-// --- UTILIDADES DE EXPORTACIÓN ---
+// ── EXPORT ────────────────────────────────────────────────────
 function exportOBJ() {
-    if (!bridgeGroup) return;
-    
-    // Forzar modo puente antes de exportar
-    const prevMode = params.mode;
-    if (params.mode === 'node') {
-        alert("Por favor, selecciona un modo de puente completo (Escala 1:25 o 1:1) para exportar.");
+    if (!bridgeGroup || params.mode === 'node') {
+        alert('Selecciona un modo de puente completo para exportar.');
         return;
     }
-    
-    const exporter = new THREE.OBJExporter();
-    const result = exporter.parse(bridgeGroup);
-    
-    triggerDownload(result, 'puente_warren_3d.obj', 'text/plain');
+    const result = new THREE.OBJExporter().parse(bridgeGroup);
+    download(result, 'puente_warren_ecuador.obj', 'text/plain');
 }
 
 function exportSTL() {
-    if (!bridgeGroup) return;
-    
-    if (params.mode === 'node') {
-        alert("Por favor, selecciona un modo de puente completo (Escala 1:25 o 1:1) para exportar.");
+    if (!bridgeGroup || params.mode === 'node') {
+        alert('Selecciona un modo de puente completo para exportar.');
         return;
     }
-    
-    const exporter = new THREE.STLExporter();
-    const result = exporter.parse(bridgeGroup, { binary: true });
-    
-    triggerDownload(result, 'puente_warren_3d.stl', 'application/octet-stream');
+    const result = new THREE.STLExporter().parse(bridgeGroup, { binary: true });
+    download(result, 'puente_warren_ecuador.stl', 'application/octet-stream');
 }
 
-function triggerDownload(content, fileName, contentType) {
-    const blob = new Blob([content], { type: contentType });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+function download(content, name, type) {
+    const blob = new Blob([content], { type });
+    const url  = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }

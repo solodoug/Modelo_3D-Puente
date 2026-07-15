@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modelador y Simulador 3D de Puente Warren</title>
+    <title>Simulador 3D Puente Warren — Aplicado al Ecuador | Herramienta Educativa</title>
+    <meta name="description" content="Simulador educativo interactivo 3D del Puente Warren aplicado a la realidad del Ecuador. Análisis FEA, escenarios reales en Amazonia y Sierra, render cinematográfico.">
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,12 +21,51 @@
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <button class="close-sidebar-btn" id="btn-close-sidebar" aria-label="Cerrar menú">&times;</button>
-                <span class="badge">Proyecto Integrador</span>
+                <div class="header-badges">
+                    <span class="badge badge-ecuador">🇪🇨 Ecuador</span>
+                    <span class="badge badge-edu">Herramienta Educativa</span>
+                </div>
                 <h1>Puente Warren 3D</h1>
-                <p class="subtitle">Herramienta interactiva de diseño y simulación estructural a escala</p>
+                <p class="subtitle">Simulador estructural interactivo aplicado a la realidad ecuatoriana</p>
+                <div class="norm-strip">
+                    <span class="norm-tag">NEC-SE-CG</span>
+                    <span class="norm-sep">·</span>
+                    <span class="norm-tag">AASHTO LRFD</span>
+                    <span class="norm-sep">·</span>
+                    <span class="norm-tag">AISC 360</span>
+                </div>
             </div>
 
             <div class="sidebar-content">
+
+                <!-- Ecuador Scenarios -->
+                <section class="control-group">
+                    <h2>📍 Casos Reales en Ecuador</h2>
+                    <p class="section-hint">Selecciona un escenario para cargar parámetros reales</p>
+                    <div class="scenario-grid">
+                        <button class="scenario-card active" id="scen-napo" data-scenario="napo">
+                            <span class="scenario-icon">🌿</span>
+                            <span class="scenario-name">Río Napo</span>
+                            <span class="scenario-loc">Amazonia · Napo</span>
+                        </button>
+                        <button class="scenario-card" id="scen-pastaza" data-scenario="pastaza">
+                            <span class="scenario-icon">🌊</span>
+                            <span class="scenario-name">Río Pastaza</span>
+                            <span class="scenario-loc">Amazonia · Pastaza</span>
+                        </button>
+                        <button class="scenario-card" id="scen-blanco" data-scenario="blanco">
+                            <span class="scenario-icon">🏗️</span>
+                            <span class="scenario-name">Río Blanco</span>
+                            <span class="scenario-loc">Sierra · Pichincha</span>
+                        </button>
+                        <button class="scenario-card" id="scen-chimborazo" data-scenario="chimborazo">
+                            <span class="scenario-icon">⛰️</span>
+                            <span class="scenario-name">Chimborazo</span>
+                            <span class="scenario-loc">Sierra · Andina</span>
+                        </button>
+                    </div>
+                </section>
+
                 <!-- Visual Modes -->
                 <section class="control-group">
                     <h2>Modo de Visualización</h2>
@@ -34,13 +74,13 @@
                             <span class="icon">📏</span> Escala 1:25
                         </button>
                         <button class="mode-btn" id="btn-mode-real" data-mode="real">
-                            <span class="icon">🌉</span> Prototipo 1:1
+                            <span class="icon">🌉</span> Acero A36
                         </button>
                         <button class="mode-btn" id="btn-mode-fea" data-mode="fea">
                             <span class="icon">⚡</span> FEA (Esfuerzos)
                         </button>
                         <button class="mode-btn" id="btn-mode-node" data-mode="node">
-                            <span class="icon">🔗</span> Detalle de Nudo
+                            <span class="icon">🔗</span> Detalle Nudo
                         </button>
                     </div>
                 </section>
@@ -48,20 +88,29 @@
                 <!-- Geometry Parameters -->
                 <section class="control-group">
                     <h2>Dimensiones del Prototipo (m)</h2>
-                    
+
                     <div class="input-range">
-                        <label for="param-length">Longitud Total (L): <span id="val-length">20.00</span> m</label>
+                        <label for="param-length">
+                            Longitud Total (L): <span id="val-length">20.00</span> m
+                            <span class="edu-tip" title="Distancia entre apoyos. En el Río Napo se necesitan ~20 m para cruzar en época seca.">ℹ️</span>
+                        </label>
                         <input type="range" id="param-length" min="10" max="40" step="0.5" value="20.00">
                     </div>
 
                     <div class="input-range">
-                        <label for="param-height">Altura Celosía (h): <span id="val-height">3.00</span> m</label>
-                        <input type="range" id="param-height" min="1" max="6" step="0.25" value="3.00">
+                        <label for="param-height">
+                            Altura Celosía (h): <span id="val-height">3.50</span> m
+                            <span class="edu-tip" title="Mayor altura = más rigidez. Relación óptima: h ≈ L/6 según AASHTO.">ℹ️</span>
+                        </label>
+                        <input type="range" id="param-height" min="1" max="6" step="0.25" value="3.50">
                     </div>
 
                     <div class="input-range">
-                        <label for="param-width">Ancho Calzada (b): <span id="val-width">6.00</span> m</label>
-                        <input type="range" id="param-width" min="1.5" max="12" step="0.25" value="6.00">
+                        <label for="param-width">
+                            Ancho Calzada (b): <span id="val-width">2.00</span> m
+                            <span class="edu-tip" title="NEC: Puentes peatonales mínimo 1.5 m. Vehiculares mínimo 3.6 m por carril.">ℹ️</span>
+                        </label>
+                        <input type="range" id="param-width" min="1.5" max="12" step="0.25" value="2.00">
                     </div>
                 </section>
 
@@ -70,7 +119,9 @@
                     <h2>Parámetros del Modelo</h2>
 
                     <div class="input-range">
-                        <label for="param-panels">Número de Paneles (n): <span id="val-panels">4</span></label>
+                        <label for="param-panels">Número de Paneles (n): <span id="val-panels">4</span>
+                            <span class="edu-tip" title="Más paneles = ángulos de diagonal más pronunciados. Óptimo: θ entre 45° y 60°.">ℹ️</span>
+                        </label>
                         <input type="range" id="param-panels" min="2" max="10" step="1" value="4">
                     </div>
 
@@ -82,25 +133,39 @@
 
                 <!-- Load Test -->
                 <section class="control-group" id="group-load">
-                    <h2>Carga de Prueba (Centro de Vano)</h2>
+                    <h2>Carga de Prueba</h2>
                     <div class="input-range">
-                        <label for="param-load">Carga Estática (P): <span id="val-load">5.00</span> N</label>
+                        <label for="param-load">
+                            Carga Estática (P): <span id="val-load">5.00</span> N
+                            <span class="edu-tip" title="NEC / AASHTO: Carga peatonal de diseño = 4.8 kN/m². Carga vehicular HL-93 para vehículos.">ℹ️</span>
+                        </label>
                         <input type="range" id="param-load" min="0" max="50" step="0.5" value="5.00">
                     </div>
+                    <!-- Safety semaphore -->
+                    <div class="safety-indicator">
+                        <span class="safety-label">Estado Estructural:</span>
+                        <div class="semaphore">
+                            <div class="sem-dot sem-green active" id="sem-green" title="Seguro"></div>
+                            <div class="sem-dot sem-yellow" id="sem-yellow" title="Revisión recomendada"></div>
+                            <div class="sem-dot sem-red" id="sem-red" title="Carga crítica"></div>
+                        </div>
+                        <span class="safety-text" id="safety-text">Seguro</span>
+                    </div>
                 </section>
-                
+
                 <!-- Export Utilities -->
                 <section class="control-group">
                     <h2>Exportación 3D</h2>
                     <div class="export-actions">
-                        <button class="action-btn secondary" id="btn-export-obj">Descargar .OBJ</button>
-                        <button class="action-btn secondary" id="btn-export-stl">Descargar .STL</button>
+                        <button class="action-btn secondary" id="btn-export-obj">⬇ Descargar .OBJ</button>
+                        <button class="action-btn secondary" id="btn-export-stl">⬇ Descargar .STL</button>
                     </div>
                 </section>
             </div>
-            
+
             <div class="sidebar-footer">
-                <p>Desarrollado para el Proyecto Integrador</p>
+                <p>Simulador Educativo — Proyecto Integrador</p>
+                <p class="footer-sub">Ing. Civil · UNACH / Ecuador</p>
             </div>
         </aside>
 
@@ -112,19 +177,19 @@
                     <div class="overlay-left">
                         <div class="stats-card">
                             <span class="stats-label" id="label-dim-x">L (Modelo):</span>
-                            <span class="stats-val" id="model-dim-x">60.00 cm</span>
+                            <span class="stats-val" id="model-dim-x">80.00 cm</span>
                         </div>
                         <div class="stats-card">
                             <span class="stats-label" id="label-dim-y">h (Modelo):</span>
-                            <span class="stats-val" id="model-dim-y">12.00 cm</span>
+                            <span class="stats-val" id="model-dim-y">14.00 cm</span>
                         </div>
                         <div class="stats-card">
                             <span class="stats-label" id="label-dim-z">b (Modelo):</span>
-                            <span class="stats-val" id="model-dim-z">16.00 cm</span>
+                            <span class="stats-val" id="model-dim-z">8.00 cm</span>
                         </div>
                     </div>
-                    
-                    <!-- Color legend for FEA mode (initially hidden) -->
+
+                    <!-- Color legend for FEA mode -->
                     <div class="fea-legend" id="fea-legend" style="display: none;">
                         <span class="legend-title">Distribución de Esfuerzos</span>
                         <div class="legend-bar"></div>
@@ -139,25 +204,103 @@
                         <div class="model-info">
                             <div class="info-row">
                                 <span class="dot green"></span>
-                                <span id="visual-mode-title">Visualización: Escala 1:25 (Tallarines)</span>
+                                <span id="visual-mode-title">Escala 1:25 (Tallarines)</span>
                             </div>
+                        </div>
+                        <div class="scenario-badge" id="scenario-badge">
+                            <span class="scenario-badge-icon">🌿</span>
+                            <span id="scenario-badge-text">Río Napo · Amazonia</span>
                         </div>
                     </div>
                 </div>
-                <button class="fullscreen-btn" id="btn-fullscreen">
-                    <span class="icon">⛶</span> Pantalla Completa
-                </button>
-                <button class="sidebar-toggle-btn" id="btn-toggle-sidebar" aria-label="Abrir Ajustes">
-                    <span class="icon">⚙️</span> Ajustes
-                </button>
-                <!-- Interactive 3D Canvas loaded here -->
+
+                <!-- Cinematic Tour Controls -->
+                <div class="cinematic-controls">
+                    <button class="cinematic-btn" id="btn-cinematic" title="Activar recorrido cinematográfico">
+                        <span class="cinematic-icon">🎬</span>
+                        <span class="cinematic-label">Tour Cinematográfico</span>
+                    </button>
+                    <div class="tour-progress-wrap" id="tour-progress-wrap" style="display:none;">
+                        <div class="tour-progress-bar" id="tour-progress-bar"></div>
+                        <span class="tour-progress-label" id="tour-progress-label">Recorriendo...</span>
+                    </div>
+                </div>
+
+                <!-- Bottom-left utility buttons -->
+                <div class="canvas-util-btns">
+                    <button class="fullscreen-btn" id="btn-fullscreen">
+                        <span class="icon">⛶</span> Pantalla Completa
+                    </button>
+                    <button class="sidebar-toggle-btn" id="btn-toggle-sidebar" aria-label="Abrir Ajustes">
+                        <span class="icon">⚙️</span> Ajustes
+                    </button>
+                </div>
+
+                <!-- Build animation indicator -->
+                <div class="build-indicator" id="build-indicator" style="display:none;">
+                    <div class="build-spinner"></div>
+                    <span>Construyendo...</span>
+                </div>
+
+                <!-- Dynamic Load HUD — shows when truck is on bridge in FEA mode -->
+                <div class="dynamic-load-hud" id="dynamic-load-hud" style="display:none;">
+                    <div class="dlh-header">
+                        <span class="dlh-icon">🚛</span>
+                        <span class="dlh-title">Carga Móvil — Línea de Influencia</span>
+                    </div>
+
+                    <!-- Truck position track -->
+                    <div class="dlh-section">
+                        <div class="dlh-section-label">Posición del camión en el vano</div>
+                        <div class="dlh-track">
+                            <span class="dlh-track-label">A</span>
+                            <div class="dlh-pos-track">
+                                <div class="dlh-pos-marker" id="dlh-truck-marker">🚛</div>
+                            </div>
+                            <span class="dlh-track-label">B</span>
+                        </div>
+                    </div>
+
+                    <!-- Reactions -->
+                    <div class="dlh-section">
+                        <div class="dlh-reaction-row">
+                            <span class="dlh-react-label">R<sub>A</sub></span>
+                            <div class="dlh-fill-bar">
+                                <div class="dlh-fill dlh-fill-a" id="dlh-ra-fill"></div>
+                            </div>
+                            <span class="dlh-val" id="dlh-ra-val">—</span>
+                        </div>
+                        <div class="dlh-reaction-row">
+                            <span class="dlh-react-label">R<sub>B</sub></span>
+                            <div class="dlh-fill-bar">
+                                <div class="dlh-fill dlh-fill-b" id="dlh-rb-fill"></div>
+                            </div>
+                            <span class="dlh-val" id="dlh-rb-val">—</span>
+                        </div>
+                    </div>
+
+                    <!-- DAF -->
+                    <div class="dlh-daf-row">
+                        <span class="dlh-daf-label">DAF</span>
+                        <span class="dlh-daf-val" id="dlh-daf-val">1.000</span>
+                        <span class="dlh-daf-sep">·</span>
+                        <span class="dlh-daf-label">P<sub>ef</sub></span>
+                        <span class="dlh-daf-val" id="dlh-pef-val">—</span>
+                        <span class="dlh-daf-unit">N</span>
+                    </div>
+
+                    <div class="dlh-formula">R<sub>A</sub>(x) = P·(L−x)/L &nbsp;|&nbsp; R<sub>B</sub>(x) = P·x/L</div>
+                </div>
             </div>
 
+
+            <!-- Dashboard Panel -->
             <div class="dashboard-panel" id="dashboard-panel">
                 <nav class="dashboard-tabs">
-                    <button class="tab-btn active" data-tab="tab-geometry">📐 Geometría y Escala</button>
-                    <button class="tab-btn" data-tab="tab-materials">🍝 Cubicaciones y Peso</button>
-                    <button class="tab-btn" data-tab="tab-static">⚡ Análisis Estático</button>
+                    <button class="tab-btn active" data-tab="tab-geometry">📐 Geometría</button>
+                    <button class="tab-btn" data-tab="tab-materials">🍝 Materiales</button>
+                    <button class="tab-btn" data-tab="tab-static">⚡ Análisis FEA</button>
+                    <button class="tab-btn tab-ecuador" data-tab="tab-ecuador">🇪🇨 Ecuador</button>
                     <button class="dashboard-toggle-btn" id="btn-toggle-dashboard" title="Colapsar panel">▼</button>
                 </nav>
 
@@ -178,23 +321,23 @@
                                     <tbody>
                                         <tr>
                                             <td>Longitud Total (L)</td>
-                                            <td><span class="math">L = <span id="geo-real-L">15.00</span> m</span></td>
-                                            <td><span class="math highlighted"><span id="geo-model-L">60.00</span> cm</span></td>
+                                            <td><span class="math">L = <span id="geo-real-L">20.00</span> m</span></td>
+                                            <td><span class="math highlighted"><span id="geo-model-L">80.00</span> cm</span></td>
                                         </tr>
                                         <tr>
                                             <td>Altura de Celosía (h)</td>
-                                            <td><span class="math">h = <span id="geo-real-h">3.00</span> m</span></td>
-                                            <td><span class="math highlighted"><span id="geo-model-h">12.00</span> cm</span></td>
+                                            <td><span class="math">h = <span id="geo-real-h">3.50</span> m</span></td>
+                                            <td><span class="math highlighted"><span id="geo-model-h">14.00</span> cm</span></td>
                                         </tr>
                                         <tr>
                                             <td>Ancho de Calzada (b)</td>
-                                            <td><span class="math">b = <span id="geo-real-b">4.00</span> m</span></td>
-                                            <td><span class="math highlighted"><span id="geo-model-b">16.00</span> cm</span></td>
+                                            <td><span class="math">b = <span id="geo-real-b">2.00</span> m</span></td>
+                                            <td><span class="math highlighted"><span id="geo-model-b">8.00</span> cm</span></td>
                                         </tr>
                                         <tr>
                                             <td>Longitud de Panel (Lp)</td>
-                                            <td><span class="math">Lp = L/n = <span id="geo-real-Lp">3.75</span> m</span></td>
-                                            <td><span class="math highlighted"><span id="geo-model-Lp">15.00</span> cm</span></td>
+                                            <td><span class="math">Lp = L/n = <span id="geo-real-Lp">5.00</span> m</span></td>
+                                            <td><span class="math highlighted"><span id="geo-model-Lp">20.00</span> cm</span></td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -205,16 +348,16 @@
                                 <p>Aplicando el <strong>Teorema de Pitágoras</strong> en el triángulo rectángulo formado por la base del panel ($Lp$) y la altura de la celosía ($h$):</p>
                                 <div class="math-box">
                                     <p class="math-formula">d = \sqrt{Lp^2 + h^2}</p>
-                                    <p class="math-substitution" id="geo-math-pitagoras">d = \sqrt{15^2 + 12^2} = \sqrt{225 + 144} = \sqrt{369}</p>
-                                    <p class="math-result">d = <span id="geo-model-d">19.21</span> cm <span class="note">(Real: <span id="geo-real-d">4.80</span> m)</span></p>
+                                    <p class="math-substitution" id="geo-math-pitagoras">d = \sqrt{20^2 + 14^2}</p>
+                                    <p class="math-result">d = <span id="geo-model-d">24.41</span> cm <span class="note">(Real: <span id="geo-real-d">6.10</span> m)</span></p>
                                 </div>
 
                                 <h3>Ángulo de Inclinación ($\theta$)</h3>
                                 <p>Ángulo de las diagonales respecto a la horizontal:</p>
                                 <div class="math-box">
                                     <p class="math-formula">\theta = \arctan\left(\frac{h}{Lp}\right)</p>
-                                    <p class="math-substitution" id="geo-math-trig">\theta = \arctan(12 / 15)</p>
-                                    <p class="math-result">\theta = <span id="geo-theta">38.66</span>°</p>
+                                    <p class="math-substitution" id="geo-math-trig">\theta = \arctan(14 / 20)</p>
+                                    <p class="math-result">\theta = <span id="geo-theta">34.99</span>°</p>
                                 </div>
                             </div>
                         </div>
@@ -238,30 +381,30 @@
                                         <tr>
                                             <td>Cuerda Superior</td>
                                             <td>n = <span id="mat-qty-sup">4</span></td>
-                                            <td><span id="mat-len-sup">15.00</span> cm</td>
-                                            <td><span id="mat-total-sup">60.00</span> cm</td>
+                                            <td><span id="mat-len-sup">20.00</span> cm</td>
+                                            <td><span id="mat-total-sup">80.00</span> cm</td>
                                         </tr>
                                         <tr>
                                             <td>Cuerda Inferior</td>
                                             <td>n = <span id="mat-qty-inf">4</span></td>
-                                            <td><span id="mat-len-inf">15.00</span> cm</td>
-                                            <td><span id="mat-total-inf">60.00</span> cm</td>
+                                            <td><span id="mat-len-inf">20.00</span> cm</td>
+                                            <td><span id="mat-total-inf">80.00</span> cm</td>
                                         </tr>
                                         <tr>
                                             <td>Diagonales</td>
-                                            <td>2n = <span id="mat-qty-diag">8</span></td>
-                                            <td><span id="mat-len-diag">19.21</span> cm</td>
-                                            <td><span id="mat-total-diag">153.68</span> cm</td>
+                                            <td>n = <span id="mat-qty-diag">4</span></td>
+                                            <td><span id="mat-len-diag">24.41</span> cm</td>
+                                            <td><span id="mat-total-diag">97.64</span> cm</td>
                                         </tr>
                                         <tr>
                                             <td>Verticales</td>
                                             <td>n + 1 = <span id="mat-qty-vert">5</span></td>
-                                            <td><span id="mat-len-vert">12.00</span> cm</td>
-                                            <td><span id="mat-total-vert">60.00</span> cm</td>
+                                            <td><span id="mat-len-vert">14.00</span> cm</td>
+                                            <td><span id="mat-total-vert">70.00</span> cm</td>
                                         </tr>
                                         <tr class="subtotal-row">
                                             <td colspan="3">Subtotal por Celosía</td>
-                                            <td><span id="mat-subtotal-side">333.68</span> cm</td>
+                                            <td><span id="mat-subtotal-side">327.64</span> cm</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -273,8 +416,8 @@
                                     <thead>
                                         <tr>
                                             <th>Zona del Modelo</th>
-                                            <th>Fórmula/Cantidad</th>
-                                            <th>Long. Unitaria</th>
+                                            <th>Cant.</th>
+                                            <th>Long. Unit.</th>
                                             <th>Long. Total</th>
                                         </tr>
                                     </thead>
@@ -283,53 +426,53 @@
                                             <td>Celosía Izquierda</td>
                                             <td>1</td>
                                             <td>—</td>
-                                            <td><span id="mat-total-left">333.68</span> cm</td>
+                                            <td><span id="mat-total-left">327.64</span> cm</td>
                                         </tr>
                                         <tr>
                                             <td>Celosía Derecha</td>
                                             <td>1</td>
                                             <td>—</td>
-                                            <td><span id="mat-total-right">333.68</span> cm</td>
+                                            <td><span id="mat-total-right">327.64</span> cm</td>
                                         </tr>
                                         <tr>
                                             <td>Travesaños Superiores</td>
                                             <td>n + 1 = <span id="mat-qty-trav-sup">5</span></td>
-                                            <td><span id="mat-len-trav-sup">16.00</span> cm</td>
-                                            <td><span id="mat-total-trav-sup">80.00</span> cm</td>
+                                            <td><span id="mat-len-trav-sup">8.00</span> cm</td>
+                                            <td><span id="mat-total-trav-sup">40.00</span> cm</td>
                                         </tr>
                                         <tr>
                                             <td>Travesaños Tablero</td>
                                             <td>n + 1 = <span id="mat-qty-trav-inf">5</span></td>
-                                            <td><span id="mat-len-trav-inf">16.00</span> cm</td>
-                                            <td><span id="mat-total-trav-inf">80.00</span> cm</td>
+                                            <td><span id="mat-len-trav-inf">8.00</span> cm</td>
+                                            <td><span id="mat-total-trav-inf">40.00</span> cm</td>
                                         </tr>
                                         <tr>
                                             <td>Arriostramientos (X)</td>
                                             <td>2n = <span id="mat-qty-arr">8</span></td>
-                                            <td><span id="mat-len-arr">21.93</span> cm</td>
-                                            <td><span id="mat-total-arr">175.45</span> cm</td>
+                                            <td><span id="mat-len-arr">21.54</span> cm</td>
+                                            <td><span id="mat-total-arr">172.32</span> cm</td>
                                         </tr>
                                         <tr class="total-row">
                                             <td colspan="3">Total General de Fideo</td>
-                                            <td><span id="mat-grand-total">902.81</span> cm (~<span id="mat-grand-total-m">9.03</span> m)</td>
+                                            <td><span id="mat-grand-total">907.60</span> cm (~<span id="mat-grand-total-m">9.08</span> m)</td>
                                         </tr>
                                     </tbody>
                                 </table>
-                                
+
                                 <div class="material-notes">
                                     <p><strong>Estimación de Peso y Masa:</strong></p>
                                     <ul>
                                         <li>Una barra de tallarín Don Vittorio (pasta seca) tiene una masa lineal promedio de ~0.08 g/cm.</li>
-                                        <li>Masa estimada en fideo: <strong><span id="mat-est-mass">72.2</span> g</strong>.</li>
-                                        <li>Masa estimada con pegamento UHU e hilo: <strong><span id="mat-total-mass">85.0</span> g</strong>.</li>
-                                        <li>Peso del modelo en reposo ($W = m \cdot g$): <strong><span id="mat-est-weight">0.83</span> N</strong>.</li>
+                                        <li>Masa estimada en fideo: <strong><span id="mat-est-mass">87.1</span> g</strong>.</li>
+                                        <li>Masa estimada con pegamento UHU e hilo: <strong><span id="mat-total-mass">102.8</span> g</strong>.</li>
+                                        <li>Peso del modelo en reposo ($W = m \cdot g$): <strong><span id="mat-est-weight">1.01</span> N</strong>.</li>
                                     </ul>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Tab 3: Static Analysis -->
+                    <!-- Tab 3: Static Analysis (FEA) -->
                     <div class="tab-pane" id="tab-static">
                         <div class="grid-2">
                             <div class="calc-section">
@@ -337,13 +480,13 @@
                                 <p>Bajo una carga puntual $P$ en el centro del vano del puente:</p>
                                 <div class="math-box">
                                     <p><strong>Carga Aplicada:</strong> $P = <span id="static-load-val">5.00</span>\text{ N}$</p>
-                                    <p><strong>Peso Propio:</strong> $W_{propio} \approx <span id="static-weight-val">0.83</span>\text{ N}$ (distribuido, concentrado en el centro en el DCL)</p>
+                                    <p><strong>Peso Propio:</strong> $W_{propio} \approx <span id="static-weight-val">1.01</span>\text{ N}$</p>
                                     <p><strong>Reacciones de Apoyo:</strong> Por simetría en apoyos simples A y B:</p>
                                     <p class="math-formula">R_A = R_B = \frac{P + W_{propio}}{2}</p>
-                                    <p class="math-result">R_A = R_B = <span id="static-reaction-val">2.92</span> N <span class="note">(Verticales hacia arriba)</span></p>
+                                    <p class="math-result">R_A = R_B = <span id="static-reaction-val">3.01</span> N <span class="note">(Verticales hacia arriba)</span></p>
                                 </div>
                                 <div class="alert info">
-                                    <p><strong>Nota Estructural:</strong> Los esfuerzos axiales son calculados automáticamente usando el método de rigidez directa de barra de armadura en 2D. Las barras rojas representan compresión y las azules tracción.</p>
+                                    <p><strong>Nota Estructural:</strong> Los esfuerzos axiales son calculados usando el método de rigidez directa de barra de armadura 2D. Las barras rojas representan compresión y las azules tracción.</p>
                                 </div>
                             </div>
 
@@ -359,9 +502,94 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <!-- Solved stresses will be injected here by JS -->
+                                        <!-- Solved stresses injected by JS -->
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 4: Ecuador Educational -->
+                    <div class="tab-pane" id="tab-ecuador">
+                        <div class="grid-2">
+                            <div class="calc-section">
+                                <h3>📍 Contexto del Escenario</h3>
+                                <div class="ecuador-context-card" id="ecuador-context-card">
+                                    <div class="ec-header">
+                                        <span class="ec-icon" id="ec-icon">🌿</span>
+                                        <div>
+                                            <div class="ec-title" id="ec-title">Comunidad Kichwa — Río Napo</div>
+                                            <div class="ec-subtitle" id="ec-subtitle">Provincia de Napo · Amazonia ecuatoriana</div>
+                                        </div>
+                                    </div>
+                                    <table class="calc-table ec-table">
+                                        <tbody>
+                                            <tr>
+                                                <td>Tipo de cruce</td>
+                                                <td id="ec-type" class="math highlighted">Peatonal / Bicicletas</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Caudal aprox.</td>
+                                                <td id="ec-flow" class="math">~120 m³/s (época seca)</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Luz requerida</td>
+                                                <td id="ec-span" class="math highlighted">18 – 22 m</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Presupuesto estimado</td>
+                                                <td id="ec-budget" class="math">$45,000 – $70,000 USD</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Beneficiarios directos</td>
+                                                <td id="ec-beneficiaries" class="math highlighted">~850 personas</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <h3 style="margin-top:16px;">📋 Marco Normativo Aplicable</h3>
+                                <div class="math-box">
+                                    <p><strong>NEC-SE-CG:</strong> Cargas y acciones de diseño sísmico (zona III – Amazonia)</p>
+                                    <p class="math-formula" id="ec-load-formula">q_p = 4.8 kN/m²</p>
+                                    <p><strong>Carga total calculada:</strong></p>
+                                    <p class="math-result">P_diseño = <span id="ec-design-load">172.8</span> kN <span class="note">(AASHTO LRFD peatonal)</span></p>
+                                </div>
+                            </div>
+
+                            <div class="calc-section">
+                                <h3>📚 Dato Educativo</h3>
+                                <div class="edu-fact-card" id="edu-fact-card">
+                                    <div class="edu-fact-icon">💡</div>
+                                    <p class="edu-fact-text" id="edu-fact-text">
+                                        El diseño Warren fue patentado en 1848 por James Warren. En Ecuador, la Escuela Politécnica Nacional ha documentado más de 40 puentes de este tipo en la red vial estatal, muchos construidos bajo norma HS 20-44, ahora superada por el tráfico actual.
+                                    </p>
+                                </div>
+
+                                <h3 style="margin-top:16px;">⚠️ Desafíos en Ecuador</h3>
+                                <div class="challenges-list" id="challenges-list">
+                                    <div class="challenge-item">
+                                        <span class="challenge-icon">🌧️</span>
+                                        <div>
+                                            <strong>Precipitación extrema</strong>
+                                            <p>La Amazonia recibe hasta 4,000 mm/año. El acero requiere tratamiento anticorrosivo (pintura epóxica + galvanizado).</p>
+                                        </div>
+                                    </div>
+                                    <div class="challenge-item">
+                                        <span class="challenge-icon">🌍</span>
+                                        <div>
+                                            <strong>Zona sísmica alta</strong>
+                                            <p>Ecuador está en el Cinturón de Fuego del Pacífico. La NEC exige análisis dinámico para estructuras mayores a 12 m.</p>
+                                        </div>
+                                    </div>
+                                    <div class="challenge-item">
+                                        <span class="challenge-icon">🚧</span>
+                                        <div>
+                                            <strong>Acceso limitado</strong>
+                                            <p>El diseño Warren modular permite transportar los elementos en lanchas o mulas y ensamblar sin grúa pesada.</p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -369,7 +597,7 @@
             </div>
         </main>
     </div>
-    
+
     <div class="sidebar-overlay" id="sidebar-overlay"></div>
     <script src="bridge.js"></script>
 </body>
