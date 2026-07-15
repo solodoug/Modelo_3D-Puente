@@ -1302,3 +1302,279 @@ body {
     .dynamic-load-hud { width: 240px; right: 10px; bottom: 60px; padding: 12px; }
     .dlh-title { font-size: 0.65rem; }
 }
+
+/* ─── ORGANIZED DASHBOARD GRID ───────────────────────────────── */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 20px;
+    height: 100%;
+}
+
+.dashboard-grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    height: 100%;
+}
+
+@media (max-width: 992px) {
+    .dashboard-grid, .dashboard-grid-3 {
+        grid-template-columns: 1fr;
+        height: auto;
+    }
+}
+
+.db-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 6px;
+    margin-bottom: 4px;
+}
+
+.section-header .icon {
+    font-size: 1rem;
+}
+
+.section-header h4 {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #fff;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* Stats 2x2 Grid */
+.stats-grid-2x2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.db-stat-card {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    transition: all var(--transition) ease;
+}
+
+.db-stat-card:hover {
+    background: rgba(255, 255, 255, 0.035);
+    border-color: var(--accent);
+    box-shadow: 0 0 10px rgba(16, 212, 138, 0.04);
+}
+
+.db-stat-card .label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.db-stat-card .val-real {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.db-stat-card .val-model {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-shadow: 0 0 4px rgba(16, 212, 138, 0.1);
+}
+
+/* Compact Calculations columns */
+.grid-2-compact {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.math-card {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.math-card h5 {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin: 0 0 2px 0;
+    font-weight: 700;
+}
+
+.math-card .formula {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    color: #fff;
+    text-align: center;
+    margin: 0;
+    font-weight: 600;
+}
+
+.math-card .substitution {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--text-secondary);
+    text-align: center;
+    margin: 0;
+    opacity: 0.75;
+}
+
+.math-card .result {
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-align: center;
+    color: var(--accent-gold);
+    margin: 4px 0 0 0;
+}
+
+.math-card .result .subtext {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    font-weight: normal;
+    display: block;
+    margin-top: 1px;
+}
+
+/* Material Estimates notes card */
+.material-notes-card {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.note-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+}
+
+.note-row .val {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: #fff;
+}
+
+.note-row.weight-highlight {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 8px;
+    margin-top: 4px;
+    color: #fff;
+    font-weight: 600;
+}
+
+.note-row.weight-highlight .val {
+    color: var(--accent);
+    font-size: 0.85rem;
+    text-shadow: 0 0 8px var(--accent-glow);
+}
+
+.calc-table.compact {
+    font-size: 0.74rem;
+}
+
+.calc-table.compact th, .calc-table.compact td {
+    padding: 6px 8px;
+}
+
+.total-row-highlight {
+    font-weight: 700;
+    background: rgba(16, 212, 138, 0.04);
+    color: var(--accent);
+}
+
+.total-row-highlight td {
+    border-top: 1px solid rgba(16, 212, 138, 0.2);
+}
+
+/* FEA stats list */
+.fea-stats-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.fea-stat-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.fea-stat-item .val {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: #fff;
+}
+
+.fea-stat-item.highlight {
+    border-color: rgba(16, 212, 138, 0.2);
+    background: rgba(16, 212, 138, 0.02);
+}
+
+.fea-stat-item.highlight .val {
+    color: var(--accent);
+    text-shadow: 0 0 4px var(--accent-glow);
+}
+
+/* Ecuador micro cards */
+.ecuador-grid-3x2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.ec-mini-card {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+.ec-mini-card .label {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+
+.ec-mini-card .val {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.ec-mini-card.highlight .val {
+    color: var(--accent-gold);
+}
+

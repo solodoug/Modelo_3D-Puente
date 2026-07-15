@@ -307,57 +307,56 @@
                 <div class="dashboard-content">
                     <!-- Tab 1: Geometry -->
                     <div class="tab-pane active" id="tab-geometry">
-                        <div class="grid-2">
-                            <div class="calc-section">
-                                <h3>Conversión de Dimensiones</h3>
-                                <table class="calc-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Parámetro</th>
-                                            <th>Real (Prototipo)</th>
-                                            <th>Modelo (Escala)</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td>Longitud Total (L)</td>
-                                            <td><span class="math">L = <span id="geo-real-L">20.00</span> m</span></td>
-                                            <td><span class="math highlighted"><span id="geo-model-L">80.00</span> cm</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td>Altura de Celosía (h)</td>
-                                            <td><span class="math">h = <span id="geo-real-h">3.50</span> m</span></td>
-                                            <td><span class="math highlighted"><span id="geo-model-h">14.00</span> cm</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td>Ancho de Calzada (b)</td>
-                                            <td><span class="math">b = <span id="geo-real-b">2.00</span> m</span></td>
-                                            <td><span class="math highlighted"><span id="geo-model-b">8.00</span> cm</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td>Longitud de Panel (Lp)</td>
-                                            <td><span class="math">Lp = L/n = <span id="geo-real-Lp">5.00</span> m</span></td>
-                                            <td><span class="math highlighted"><span id="geo-model-Lp">20.00</span> cm</span></td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                        <div class="dashboard-grid">
+                            <!-- Left: Dimensions -->
+                            <div class="db-section">
+                                <div class="section-header">
+                                    <span class="icon">📐</span>
+                                    <h4>Conversión de Dimensiones (Escala 1:25)</h4>
+                                </div>
+                                <div class="stats-grid-2x2">
+                                    <div class="db-stat-card">
+                                        <span class="label">Longitud Total (L)</span>
+                                        <span class="val-real">Real: <span id="geo-real-L">20.00</span> m</span>
+                                        <span class="val-model" id="geo-model-L">80.00 cm</span>
+                                    </div>
+                                    <div class="db-stat-card">
+                                        <span class="label">Altura Celosía (h)</span>
+                                        <span class="val-real">Real: <span id="geo-real-h">3.50</span> m</span>
+                                        <span class="val-model" id="geo-model-h">14.00 cm</span>
+                                    </div>
+                                    <div class="db-stat-card">
+                                        <span class="label">Ancho Calzada (b)</span>
+                                        <span class="val-real">Real: <span id="geo-real-b">2.00</span> m</span>
+                                        <span class="val-model" id="geo-model-b">8.00 cm</span>
+                                    </div>
+                                    <div class="db-stat-card">
+                                        <span class="label">Longitud de Panel (Lp)</span>
+                                        <span class="val-real">Real: <span id="geo-real-Lp">5.00</span> m</span>
+                                        <span class="val-model" id="geo-model-Lp">20.00 cm</span>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div class="calc-section">
-                                <h3>Cálculo del Elemento Diagonal</h3>
-                                <p>Aplicando el <strong>Teorema de Pitágoras</strong> en el triángulo rectángulo formado por la base del panel ($Lp$) y la altura de la celosía ($h$):</p>
-                                <div class="math-box">
-                                    <p class="math-formula">d = \sqrt{Lp^2 + h^2}</p>
-                                    <p class="math-substitution" id="geo-math-pitagoras">d = \sqrt{20^2 + 14^2}</p>
-                                    <p class="math-result">d = <span id="geo-model-d">24.41</span> cm <span class="note">(Real: <span id="geo-real-d">6.10</span> m)</span></p>
+                            <!-- Right: Calculations -->
+                            <div class="db-section">
+                                <div class="section-header">
+                                    <span class="icon">🧮</span>
+                                    <h4>Cálculo del Elemento Diagonal y Ángulo</h4>
                                 </div>
-
-                                <h3>Ángulo de Inclinación ($\theta$)</h3>
-                                <p>Ángulo de las diagonales respecto a la horizontal:</p>
-                                <div class="math-box">
-                                    <p class="math-formula">\theta = \arctan\left(\frac{h}{Lp}\right)</p>
-                                    <p class="math-substitution" id="geo-math-trig">\theta = \arctan(14 / 20)</p>
-                                    <p class="math-result">\theta = <span id="geo-theta">34.99</span>°</p>
+                                <div class="grid-2-compact">
+                                    <div class="math-card">
+                                        <h5>Longitud Diagonal (d)</h5>
+                                        <p class="formula">d = \sqrt{Lp^2 + h^2}</p>
+                                        <p class="substitution" id="geo-math-pitagoras">d = \sqrt{20^2 + 14^2}</p>
+                                        <p class="result"><span id="geo-model-d">24.41</span> cm <span class="subtext">Real: <span id="geo-real-d">6.10</span> m</span></p>
+                                    </div>
+                                    <div class="math-card">
+                                        <h5>Ángulo Inclinación (θ)</h5>
+                                        <p class="formula">\theta = \arctan(h / Lp)</p>
+                                        <p class="substitution" id="geo-math-trig">\theta = \arctan(14 / 20)</p>
+                                        <p class="result"><span id="geo-theta">34.99</span>°</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -365,16 +364,20 @@
 
                     <!-- Tab 2: Materials -->
                     <div class="tab-pane" id="tab-materials">
-                        <div class="grid-2">
-                            <div class="calc-section">
-                                <h3>Inventario de Elementos por Celosía Lateral</h3>
-                                <table class="calc-table">
+                        <div class="dashboard-grid-3">
+                            <!-- Column 1: Lateral Truss Inventory -->
+                            <div class="db-section">
+                                <div class="section-header">
+                                    <span class="icon">🍝</span>
+                                    <h4>Inventario por Celosía</h4>
+                                </div>
+                                <table class="calc-table compact">
                                     <thead>
                                         <tr>
-                                            <th>Elemento Estructural</th>
-                                            <th>Fórmula/Cantidad</th>
-                                            <th>Long. Unitaria</th>
-                                            <th>Long. Parcial</th>
+                                            <th>Elemento</th>
+                                            <th>Cant.</th>
+                                            <th>L. Unit.</th>
+                                            <th>Total</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -402,7 +405,7 @@
                                             <td><span id="mat-len-vert">14.00</span> cm</td>
                                             <td><span id="mat-total-vert">70.00</span> cm</td>
                                         </tr>
-                                        <tr class="subtotal-row">
+                                        <tr class="total-row-highlight">
                                             <td colspan="3">Subtotal por Celosía</td>
                                             <td><span id="mat-subtotal-side">327.64</span> cm</td>
                                         </tr>
@@ -410,32 +413,30 @@
                                 </table>
                             </div>
 
-                            <div class="calc-section">
-                                <h3>Cubicación Completa y Peso Estimado</h3>
-                                <table class="calc-table">
+                            <!-- Column 2: Complete Cubication -->
+                            <div class="db-section">
+                                <div class="section-header">
+                                    <span class="icon">📦</span>
+                                    <h4>Cubicación Completa</h4>
+                                </div>
+                                <table class="calc-table compact">
                                     <thead>
                                         <tr>
-                                            <th>Zona del Modelo</th>
+                                            <th>Componente</th>
                                             <th>Cant.</th>
-                                            <th>Long. Unit.</th>
-                                            <th>Long. Total</th>
+                                            <th>L. Unit.</th>
+                                            <th>Total</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <tr>
-                                            <td>Celosía Izquierda</td>
-                                            <td>1</td>
+                                            <td>Celosías L + R</td>
+                                            <td>2</td>
                                             <td>—</td>
-                                            <td><span id="mat-total-left">327.64</span> cm</td>
+                                            <td><span id="mat-total-left">327.64</span> cm <span id="mat-total-right" style="display:none;"></span></td>
                                         </tr>
                                         <tr>
-                                            <td>Celosía Derecha</td>
-                                            <td>1</td>
-                                            <td>—</td>
-                                            <td><span id="mat-total-right">327.64</span> cm</td>
-                                        </tr>
-                                        <tr>
-                                            <td>Travesaños Superiores</td>
+                                            <td>Travesaños Sup.</td>
                                             <td>n + 1 = <span id="mat-qty-trav-sup">5</span></td>
                                             <td><span id="mat-len-trav-sup">8.00</span> cm</td>
                                             <td><span id="mat-total-trav-sup">40.00</span> cm</td>
@@ -452,21 +453,36 @@
                                             <td><span id="mat-len-arr">21.54</span> cm</td>
                                             <td><span id="mat-total-arr">172.32</span> cm</td>
                                         </tr>
-                                        <tr class="total-row">
-                                            <td colspan="3">Total General de Fideo</td>
+                                        <tr class="total-row-highlight">
+                                            <td colspan="3">Total de Fideos</td>
                                             <td><span id="mat-grand-total">907.60</span> cm (~<span id="mat-grand-total-m">9.08</span> m)</td>
                                         </tr>
                                     </tbody>
                                 </table>
+                            </div>
 
-                                <div class="material-notes">
-                                    <p><strong>Estimación de Peso y Masa:</strong></p>
-                                    <ul>
-                                        <li>Una barra de tallarín Don Vittorio (pasta seca) tiene una masa lineal promedio de ~0.08 g/cm.</li>
-                                        <li>Masa estimada en fideo: <strong><span id="mat-est-mass">87.1</span> g</strong>.</li>
-                                        <li>Masa estimada con pegamento UHU e hilo: <strong><span id="mat-total-mass">102.8</span> g</strong>.</li>
-                                        <li>Peso del modelo en reposo ($W = m \cdot g$): <strong><span id="mat-est-weight">1.01</span> N</strong>.</li>
-                                    </ul>
+                            <!-- Column 3: Estimates -->
+                            <div class="db-section">
+                                <div class="section-header">
+                                    <span class="icon">⚖️</span>
+                                    <h4>Masa y Peso del Modelo</h4>
+                                </div>
+                                <div class="material-notes-card">
+                                    <div class="note-row">
+                                        <span class="icon">🍝</span>
+                                        <span>Pasta seca (0.08 g/cm):</span>
+                                        <span class="val" id="mat-est-mass">87.1 g</span>
+                                    </div>
+                                    <div class="note-row">
+                                        <span class="icon">🧪</span>
+                                        <span>Masa (+ pegamento + hilo):</span>
+                                        <span class="val" id="mat-total-mass">102.8 g</span>
+                                    </div>
+                                    <div class="note-row weight-highlight">
+                                        <span class="icon">⬇️</span>
+                                        <span>Peso Propio en Reposo ($W$):</span>
+                                        <span class="val" id="mat-est-weight">1.01 N</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -474,25 +490,44 @@
 
                     <!-- Tab 3: Static Analysis (FEA) -->
                     <div class="tab-pane" id="tab-static">
-                        <div class="grid-2">
-                            <div class="calc-section">
-                                <h3>Diagrama de Cuerpo Libre (DCL) y Equilibrio</h3>
-                                <p>Bajo una carga puntual $P$ en el centro del vano del puente:</p>
-                                <div class="math-box">
-                                    <p><strong>Carga Aplicada:</strong> $P = <span id="static-load-val">5.00</span>\text{ N}$</p>
-                                    <p><strong>Peso Propio:</strong> $W_{propio} \approx <span id="static-weight-val">1.01</span>\text{ N}$</p>
-                                    <p><strong>Reacciones de Apoyo:</strong> Por simetría en apoyos simples A y B:</p>
-                                    <p class="math-formula">R_A = R_B = \frac{P + W_{propio}}{2}</p>
-                                    <p class="math-result">R_A = R_B = <span id="static-reaction-val">3.01</span> N <span class="note">(Verticales hacia arriba)</span></p>
+                        <div class="dashboard-grid">
+                            <!-- Left: DCL and Reactions -->
+                            <div class="db-section">
+                                <div class="section-header">
+                                    <span class="icon">⚡</span>
+                                    <h4>Diagrama de Cuerpo Libre y Equilibrio</h4>
                                 </div>
-                                <div class="alert info">
-                                    <p><strong>Nota Estructural:</strong> Los esfuerzos axiales son calculados usando el método de rigidez directa de barra de armadura 2D. Las barras rojas representan compresión y las azules tracción.</p>
+                                <p style="font-size:0.75rem; color:var(--text-secondary); margin:0 0 4px 0;">Bajo una carga puntual $P$ en el centro del vano del puente:</p>
+                                
+                                <div class="fea-stats-list">
+                                    <div class="fea-stat-item">
+                                        <span>Carga Móvil Aplicada (P)</span>
+                                        <span class="val" id="static-load-val">5.00 N</span>
+                                    </div>
+                                    <div class="fea-stat-item">
+                                        <span>Peso Propio Estructura (W_propio)</span>
+                                        <span class="val" id="static-weight-val">1.01 N</span>
+                                    </div>
+                                    <div class="fea-stat-item highlight">
+                                        <span>Reacciones de Apoyo (R_A = R_B = \frac{P + W}{2})</span>
+                                        <span class="val" id="static-reaction-val">3.01 N</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="alert info" style="margin-top: 8px; padding: 10px 14px;">
+                                    <p style="font-size: 0.7rem; line-height: 1.4; color: #cbd5e1; margin:0;">
+                                        <strong>Nota Estructural:</strong> Esfuerzos axiales mediante el método de rigidez directa 2D. Las barras <span style="color:#ef4444; font-weight:700;">rojas</span> indican compresión y las <span style="color:#3b82f6; font-weight:700;">azules</span> tracción.
+                                    </p>
                                 </div>
                             </div>
 
-                            <div class="calc-section">
-                                <h3>Esfuerzos en Barras Críticas</h3>
-                                <table class="calc-table" id="table-stresses">
+                            <!-- Right: Critical Stresses -->
+                            <div class="db-section">
+                                <div class="section-header">
+                                    <span class="icon">📊</span>
+                                    <h4>Esfuerzos en Barras Críticas</h4>
+                                </div>
+                                <table class="calc-table compact" id="table-stresses">
                                     <thead>
                                         <tr>
                                             <th>Barra</th>
@@ -511,84 +546,64 @@
 
                     <!-- Tab 4: Ecuador Educational -->
                     <div class="tab-pane" id="tab-ecuador">
-                        <div class="grid-2">
-                            <div class="calc-section">
-                                <h3>📍 Contexto del Escenario</h3>
-                                <div class="ecuador-context-card" id="ecuador-context-card">
-                                    <div class="ec-header">
-                                        <span class="ec-icon" id="ec-icon">🌿</span>
-                                        <div>
-                                            <div class="ec-title" id="ec-title">Comunidad Kichwa — Río Napo</div>
-                                            <div class="ec-subtitle" id="ec-subtitle">Provincia de Napo · Amazonia ecuatoriana</div>
-                                        </div>
+                        <div class="dashboard-grid">
+                            <!-- Left: Context and Normative -->
+                            <div class="db-section">
+                                <div class="section-header">
+                                    <span class="icon">📍</span>
+                                    <h4 id="ec-title">Comunidad Kichwa — Río Napo</h4>
+                                </div>
+                                <p style="font-size:0.72rem; color:var(--text-secondary); margin:-4px 0 4px 0;" id="ec-subtitle">Provincia de Napo · Amazonia ecuatoriana</p>
+                                
+                                <div class="ecuador-grid-3x2">
+                                    <div class="ec-mini-card">
+                                        <span class="label">Icono Escenario</span>
+                                        <span class="val" id="ec-icon">🌿</span>
                                     </div>
-                                    <table class="calc-table ec-table">
-                                        <tbody>
-                                            <tr>
-                                                <td>Tipo de cruce</td>
-                                                <td id="ec-type" class="math highlighted">Peatonal / Bicicletas</td>
-                                            </tr>
-                                            <tr>
-                                                <td>Caudal aprox.</td>
-                                                <td id="ec-flow" class="math">~120 m³/s (época seca)</td>
-                                            </tr>
-                                            <tr>
-                                                <td>Luz requerida</td>
-                                                <td id="ec-span" class="math highlighted">18 – 22 m</td>
-                                            </tr>
-                                            <tr>
-                                                <td>Presupuesto estimado</td>
-                                                <td id="ec-budget" class="math">$45,000 – $70,000 USD</td>
-                                            </tr>
-                                            <tr>
-                                                <td>Beneficiarios directos</td>
-                                                <td id="ec-beneficiaries" class="math highlighted">~850 personas</td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
+                                    <div class="ec-mini-card">
+                                        <span class="label">Tipo de Cruce</span>
+                                        <span class="val" id="ec-type">Peatonal / Bicicletas</span>
+                                    </div>
+                                    <div class="ec-mini-card">
+                                        <span class="label">Caudal Aprox.</span>
+                                        <span class="val" id="ec-flow">~120 m³/s</span>
+                                    </div>
+                                    <div class="ec-mini-card highlight">
+                                        <span class="label">Luz Requerida</span>
+                                        <span class="val" id="ec-span">18 – 22 m</span>
+                                    </div>
+                                    <div class="ec-mini-card">
+                                        <span class="label">Presupuesto</span>
+                                        <span class="val" id="ec-budget">$45k – $70k USD</span>
+                                    </div>
+                                    <div class="ec-mini-card highlight">
+                                        <span class="label">Beneficiarios</span>
+                                        <span class="val" id="ec-beneficiaries">~850 personas</span>
+                                    </div>
                                 </div>
 
-                                <h3 style="margin-top:16px;">📋 Marco Normativo Aplicable</h3>
-                                <div class="math-box">
-                                    <p><strong>NEC-SE-CG:</strong> Cargas y acciones de diseño sísmico (zona III – Amazonia)</p>
-                                    <p class="math-formula" id="ec-load-formula">q_p = 4.8 kN/m²</p>
-                                    <p><strong>Carga total calculada:</strong></p>
-                                    <p class="math-result">P_diseño = <span id="ec-design-load">172.8</span> kN <span class="note">(AASHTO LRFD peatonal)</span></p>
+                                <div class="alert info" style="margin-top: 6px; padding: 10px 14px;">
+                                    <p style="font-size: 0.7rem; line-height: 1.4; color: #cbd5e1; margin:0;">
+                                        <strong>Norma NEC-SE-CG:</strong> Cargas de diseño sísmico. Carga peatonal: <span id="ec-load-formula" style="font-family:var(--font-mono); font-weight:700;">q_p = 4.8 kN/m²</span>. Carga total: <strong style="color:var(--accent-gold);"><span id="ec-design-load">172.8</span> kN</strong> (AASHTO LRFD).
+                                    </p>
                                 </div>
                             </div>
 
-                            <div class="calc-section">
-                                <h3>📚 Dato Educativo</h3>
-                                <div class="edu-fact-card" id="edu-fact-card">
-                                    <div class="edu-fact-icon">💡</div>
-                                    <p class="edu-fact-text" id="edu-fact-text">
+                            <!-- Right: Fact and Challenges -->
+                            <div class="db-section">
+                                <div class="section-header">
+                                    <span class="icon">📚</span>
+                                    <h4>Datos y Desafíos Locales</h4>
+                                </div>
+                                <div class="edu-fact-card" style="padding: 10px; margin-bottom: 4px; display: flex; gap: 8px; background: rgba(255,255,255,0.01); border: 1px solid var(--glass-border); border-radius: 8px;">
+                                    <span style="font-size: 1.1rem;">💡</span>
+                                    <p class="edu-fact-text" id="edu-fact-text" style="font-size: 0.72rem; line-height: 1.4; margin: 0; color: var(--text-secondary);">
                                         El diseño Warren fue patentado en 1848 por James Warren. En Ecuador, la Escuela Politécnica Nacional ha documentado más de 40 puentes de este tipo en la red vial estatal, muchos construidos bajo norma HS 20-44, ahora superada por el tráfico actual.
                                     </p>
                                 </div>
 
-                                <h3 style="margin-top:16px;">⚠️ Desafíos en Ecuador</h3>
-                                <div class="challenges-list" id="challenges-list">
-                                    <div class="challenge-item">
-                                        <span class="challenge-icon">🌧️</span>
-                                        <div>
-                                            <strong>Precipitación extrema</strong>
-                                            <p>La Amazonia recibe hasta 4,000 mm/año. El acero requiere tratamiento anticorrosivo (pintura epóxica + galvanizado).</p>
-                                        </div>
-                                    </div>
-                                    <div class="challenge-item">
-                                        <span class="challenge-icon">🌍</span>
-                                        <div>
-                                            <strong>Zona sísmica alta</strong>
-                                            <p>Ecuador está en el Cinturón de Fuego del Pacífico. La NEC exige análisis dinámico para estructuras mayores a 12 m.</p>
-                                        </div>
-                                    </div>
-                                    <div class="challenge-item">
-                                        <span class="challenge-icon">🚧</span>
-                                        <div>
-                                            <strong>Acceso limitado</strong>
-                                            <p>El diseño Warren modular permite transportar los elementos en lanchas o mulas y ensamblar sin grúa pesada.</p>
-                                        </div>
-                                    </div>
+                                <div class="challenges-list" id="challenges-list" style="display: flex; flex-direction: column; gap: 4px; overflow-y: auto; max-height: 120px;">
+                                    <!-- Challenges list injected by JS -->
                                 </div>
                             </div>
                         </div>

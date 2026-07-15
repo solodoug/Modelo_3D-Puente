@@ -1096,9 +1096,6 @@ function buildEnvironment(isAmazon, xOff, zOff) {
     // ── Background Mountains ───────────────────────────────────
     buildMountains(isAmazon, xOff);
 
-    // ── River Rocks ────────────────────────────────────────────
-    buildRiverRocks(xOff);
-
     // ── Roads ─────────────────────────────────────────────────
     const roadLen = 35;
     const roadGeom = new THREE.BoxGeometry(roadLen, 0.06, params.width);
@@ -1657,46 +1654,6 @@ function buildMountains(isAmazon, xOff) {
     });
 }
 
-// ── RIVER ROCKS BUILDER ───────────────────────────────────────
-function buildRiverRocks(xOff) {
-    const rockColors = [0x5a5a5a, 0x6e6e6e, 0x4a4a4a, 0x7c6f62, 0x5c534c];
-    
-    // Generar 16 rocas distribuidas de forma natural en las orillas del río
-    for (let i = 0; i < 16; i++) {
-        const r = 0.4 + Math.random() * 0.8; // tamaño de la roca (40cm a 1.2m)
-        
-        // Esfera de baja resolución (5 segmentos, 4 anillos) para que parezca una piedra angulosa y áspera
-        const geom = new THREE.SphereGeometry(r, 5, 4);
-        
-        const col = rockColors[Math.floor(Math.random() * rockColors.length)];
-        const mat = new THREE.MeshStandardMaterial({
-            color: col,
-            roughness: 0.9,
-            metalness: 0.05
-        });
-        const rock = new THREE.Mesh(geom, mat);
-        
-        // Colocar cerca de las orillas (X = -xOff + delta o X = xOff - delta)
-        const isLeftShore = Math.random() > 0.5;
-        let rx = 0;
-        if (isLeftShore) {
-            rx = -xOff + Math.random() * 5.0; // orilla izquierda
-        } else {
-            rx = xOff - Math.random() * 5.0;  // orilla derecha
-        }
-        
-        const rz = (Math.random() - 0.5) * 80;
-        const ry = -4.15 + (r * 0.28); // parcialmente sumergidas
-        
-        rock.position.set(rx, ry, rz);
-        // Rotación y escala aleatoria para hacer cada piedra única
-        rock.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-        rock.scale.set(1.4 + Math.random()*0.4, 0.7 + Math.random()*0.3, 1.1 + Math.random()*0.4);
-        
-        rock.castShadow = true;
-        rock.receiveShadow = true;
-        bridgeGroup.add(rock);
-    }
-}
+
 
 
